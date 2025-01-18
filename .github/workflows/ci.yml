@@ -1,0 +1,48 @@
+name: Forge CI
+
+on:
+  push:
+    branches:
+      - "*"
+  pull_request:
+    branches:
+      - main
+
+env:
+  FOUNDRY_PROFILE: ci
+
+jobs:
+  check:
+    name: Forge CI Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install Dependencies
+        run: forge install
+
+      - name: Build Contracts
+        run: |
+          forge --version
+          forge build
+          forge build --via-ir # Build with IR pipeline for extra verification
+
+      - name: Check format
+        run: |
+          forge fmt --check
+          if [ $? -ne 0 ]; then
+            echo "❌ Code is not properly formatted. Run 'forge fmt' locally and commit the changes."
+            exit 1
+          fi
+
+      - name: Run Tests
+        run: |
+          # Run regular tests with verbosity
+          forge test -vvv
