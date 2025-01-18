@@ -45,4 +45,4 @@ jobs:
       - name: Run Tests
         run: |
           # Run regular tests with verbosity
-          forge test -vvv
+          HOLESKY_RPC_URL=${{ secrets.HOLESKY_RPC_URL }} forge test -vvv
