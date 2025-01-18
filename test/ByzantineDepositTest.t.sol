@@ -48,9 +48,9 @@ contract ByzantineDepositTest is Test {
     address public charlie = depositors[2];
 
     // Initial balances
-    uint256 public initialETHBalance = 20 ether;
-    uint256 public initialStETHBalance = 10 ether;
-    uint256 public initialfUSDCBalance = 10 ether;
+    uint256 public initialETHBalance = 200 ether;
+    uint256 public initialStETHBalance = 100 ether;
+    uint256 public initialfUSDCBalance = 100 ether;
 
     // Canonical, virtual beacon chain ETH token
     IERC20 public constant beaconChainETHToken = IERC20(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
@@ -210,8 +210,10 @@ contract ByzantineDepositTest is Test {
 
     /* ===================== TEST EXTERNAL FUNCTIONS ===================== */
 
-    function test_DepositWithdrawMoveETH() public {
-        uint256 initialDeposit = 10 ether;
+    function test_DepositWithdrawMoveETH(uint256 initialDeposit, uint256 withdrawnAmount) public {
+        vm.assume(initialDeposit > 0 && withdrawnAmount > 0);
+        vm.assume(initialDeposit <= initialStETHBalance);
+        vm.assume(withdrawnAmount <= initialDeposit);
 
         // Alice deposits `initialDeposit` ETH
         _depositETH(alice, initialDeposit);
@@ -230,13 +232,12 @@ contract ByzantineDepositTest is Test {
         deposit.withdraw(beaconChainETHToken, initialDeposit + 1 ether);
 
         // Alice withdraws some ETH
-        uint256 withdrawnAmount = 5 ether;
         _withdraw(alice, beaconChainETHToken, withdrawnAmount);
 
         // Verify balances
         assertEq(deposit.depositedAmount(alice, beaconChainETHToken), initialDeposit - withdrawnAmount);
         assertEq(address(deposit).balance, initialDeposit - withdrawnAmount);
-        assertEq(alice.balance, withdrawnAmount);
+        assertEq(alice.balance, initialStETHBalance - initialDeposit + withdrawnAmount);
 
         // Unpause vault moves
         _unpauseVaultMoves();
@@ -256,14 +257,14 @@ contract ByzantineDepositTest is Test {
         // Verify balances
         assertEq(deposit.depositedAmount(alice, beaconChainETHToken), 0);
         assertEq(address(deposit).balance, 0);
-        assertEq(alice.balance, withdrawnAmount);
+        assertEq(alice.balance, initialStETHBalance - initialDeposit + withdrawnAmount);
         assertEq(vault7535ETH.balanceOf(alice), initialDeposit - withdrawnAmount); // vault shares
         assertEq(address(vault7535ETH).balance, initialDeposit - withdrawnAmount); // vault assets
     }
 
-    function test_DepositWithdrawMoveStETH() public {
-        uint256 initialAliceDeposit = 10 ether - 1 wei;
-        uint256 initialBobDeposit = 5 ether;
+    function test_DepositWithdrawMoveStETH(uint256 initialAliceDeposit, uint256 initialBobDeposit) public {
+        vm.assume((initialAliceDeposit > 2 wei) && (initialBobDeposit > 2 wei));
+        vm.assume(initialAliceDeposit <= initialStETHBalance && initialBobDeposit <= initialStETHBalance);
 
         // Alice deposits `initialAliceDeposit` stETH
         _depositStETH(alice, initialAliceDeposit);
@@ -271,7 +272,7 @@ contract ByzantineDepositTest is Test {
 
         // Verify balances
         assertEq(deposit.depositedAmount(alice, stETH), wstETHAmountAlice);
-        assertEq(stETH.balanceOf(alice), initialStETHBalance - initialAliceDeposit);
+        assertApproxEqAbs(stETH.balanceOf(alice), initialStETHBalance - initialAliceDeposit, 1);
 
         // Simulate stETH rebasing (only for alice here)
         uint256 rebasingAmount = 0 ether;
@@ -292,7 +293,7 @@ contract ByzantineDepositTest is Test {
 
         // Verify balances
         assertEq(deposit.depositedAmount(alice, stETH), 0);
-        assertApproxEqAbs(stETH.balanceOf(alice), initialAliceDeposit, 3);
+        assertApproxEqAbs(stETH.balanceOf(alice), initialStETHBalance, 3);
 
         // Unpause vault moves
         _unpauseVaultMoves();
@@ -300,27 +301,34 @@ contract ByzantineDepositTest is Test {
         _recordVaults();
 
         // Bob moves almost all his stETH to the vault
-        _moveToVault(bob, stETH, address(vault4626stETH), wstETHAmountBob - 0.01 ether);
+        _moveToVault(bob, stETH, address(vault4626stETH), wstETHAmountBob - 1 wei);
 
         // Verify balances
-        assertEq(deposit.depositedAmount(bob, stETH), 0.01 ether);
+        assertEq(deposit.depositedAmount(bob, stETH), 1 wei);
         assertApproxEqAbs(stETH.balanceOf(bob), initialStETHBalance - initialBobDeposit, 3);
         assertApproxEqAbs(
-            vault4626stETH.balanceOf(bob), initialBobDeposit - ILido(address(stETH)).getPooledEthByShares(0.01 ether), 3
+            vault4626stETH.balanceOf(bob), initialBobDeposit - ILido(address(stETH)).getPooledEthByShares(1 wei), 3
         ); // vault shares
         assertApproxEqAbs(
             stETH.balanceOf(address(vault4626stETH)),
-            initialBobDeposit - ILido(address(stETH)).getPooledEthByShares(0.01 ether),
+            initialBobDeposit - ILido(address(stETH)).getPooledEthByShares(1 wei),
             3
         ); // vault assets
     }
 
-    function test_DepositWithdrawMovefUSDC() public {
+    function test_DepositWithdrawMovefUSDC(
+        uint256 initialDeposit,
+        uint256 withdrawnAmount,
+        uint256 amountToMove
+    ) public {
+        vm.assume(initialDeposit > 0 && withdrawnAmount > 0 && amountToMove > 0);
+        vm.assume(initialDeposit <= initialfUSDCBalance);
+        vm.assume(withdrawnAmount <= 2 * initialDeposit);
+        vm.assume(amountToMove <= 2 * initialDeposit - withdrawnAmount);
+
         // Byzantine Admin whitelists fUSDC
         vm.prank(byzantineAdmin);
         deposit.addDepositToken(fUSDC);
-
-        uint256 initialDeposit = 1_000_000e6;
 
         // Alice deposits `initialDeposit` fUSDC
         _depositfUSDC(alice, initialDeposit);
@@ -340,7 +348,6 @@ contract ByzantineDepositTest is Test {
         _unpauseWithdrawals();
 
         // Alice withdraws some fUSDC
-        uint256 withdrawnAmount = 100_000e6;
         _withdraw(alice, fUSDC, withdrawnAmount);
 
         // Verify balances
@@ -353,7 +360,6 @@ contract ByzantineDepositTest is Test {
         _recordVaults();
 
         // Bob moves almost all his fUSDC to the vault
-        uint256 amountToMove = 500_000e6;
         _moveToVault(alice, fUSDC, address(vault4626fUSDC), amountToMove);
 
         // Verify balances

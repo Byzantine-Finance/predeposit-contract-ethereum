@@ -25,4 +25,7 @@ holesky = "${HOLESKY_RPC_URL}"
 [etherscan]
 holesky = { key = "${ETHERSCAN_API_KEY}" }
 
+[fuzz]
+runs = 1000
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
