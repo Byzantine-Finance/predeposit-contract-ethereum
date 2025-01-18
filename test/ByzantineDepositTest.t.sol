@@ -322,7 +322,7 @@ contract ByzantineDepositTest is Test {
         uint256 amountToMove
     ) public {
         vm.assume(initialDeposit > 0 && withdrawnAmount > 0 && amountToMove > 0);
-        vm.assume(initialDeposit <= initialfUSDCBalance);
+        vm.assume(initialDeposit <= initialfUSDCBalance / 2);
         vm.assume(withdrawnAmount <= 2 * initialDeposit);
         vm.assume(amountToMove <= 2 * initialDeposit - withdrawnAmount);
 
