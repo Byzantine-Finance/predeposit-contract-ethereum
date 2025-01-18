@@ -1,66 +1,51 @@
-## Foundry
+# `ByzantineDeposit` Contract Specification
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+## Overview
 
-Foundry consists of:
+The primary purpose of the `ByzantineDeposit` contract is to serve as a pre-deposit mechanism for the Byzantine protocol, specifically targeting early liquidity providers. The commited liquidity will rewarded by Byzantine points calculated off-chain through the events emitted by the contract.
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+This contract ensures that deposits are securely stored while maintaining the integrity of the underlying assets.
 
-## Documentation
+## Specification record
 
-https://book.getfoundry.sh/
+### Accepted Tokens
 
-## Usage
+| Token   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ETH`   | Accepted by default and recognized by canonical address `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE`. <br/> See function `depositETH()`                                                                                                                                                                                                                                                                                                                                    |
+| `stETH` | Accepted by default.<br/> To prevent the loss of the PoS rewards (rebasing mechanism), **the contract automatically wraps `stETH` into `wstETH` upon deposit**. This ensures that users do not miss out on staking rewards while using the contract.<br/> This is the `wsETH` amount which is stored in the `depositedAmount` mapping, therefore, during withdrawal / move of `stETH`, users must input the amount of `wsETH` they got. <br/>See function `depositERC20()` |
+| `ERC20` | As long as the token has been whitelisted by the `owner`.<br/> It could be `wBTC`, `iBTC`, `USDC`, `eigen` and other `LSTs` or `stablecoin`.<br/> See function `addDepositToken()` and `depositERC20()`                                                                                                                                                                                                                                                                    |
 
-### Build
+### Whitelisting of Deposit Tokens
 
-```shell
-$ forge build
-```
+The contract allows for the whitelisting of additional deposit tokens by the `owner`. It is his duty to be careful to not add rebasing or "[exotic ERC20](https://github.com/d-xo/weird-erc20)" tokens. This flexibility enables the inclusion of various ERC20 tokens while maintaining security and control.
 
-### Test
+### Depositor Whitelisting
 
-```shell
-$ forge test
-```
+Depositors must be whitelisted to interact with the contract (see mapping `canDeposit`). However, there is an option to enable permissionless deposits, allowing anybody to participate in the deposit process and earn points. That feature is controlled by the `owner` and can be reverted.
 
-### Format
+### Move stake to Byzantine vaults
 
-```shell
-$ forge fmt
-```
+When Byzantine contracts will be live on mainnet, depositors will have to explicitly move their tokens to the Byzantine vaults of their choice. It's not "all-or-nothing". It is possible to invest in multiple Byzantine vaults. See function `moveToVault()`.
 
-### Gas Snapshots
+Tokens can only be moved to Byzantine vaults that have been pre-approved by the contract administrator. This ensures that only trusted vaults are utilized for token transfers.
 
-```shell
-$ forge snapshot
-```
+### Pausable Functionality
 
-### Anvil
+The contract includes the ability to pause specific functionalities, including:
 
-```shell
-$ anvil
-```
+- Deposits - flag `PAUSED_DEPOSITS`
+- Withdrawals - flag `PAUSED_WITHDRAWALS`
+- Moves to vaults - flag `PAUSED_VAULTS_MOVES`
 
-### Deploy
+Only registers pausers and unpausers recorded in the [`PauserRegistry`](src/permissions/PauserRegistry.sol) contract have the right pause and unpause the contract's functionalities.
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
+This feature enhances security by allowing the contract owner to halt operations in case of emergencies. It will also block the moves to vaults as long as Byzantine protocol is not live on mainnet.
 
-### Cast
+## Audit Considerations
 
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+| Audit Aspect                                                                                            | Status                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Unit Tests & Fuzzing**                                                                                | Comprehensive unit tests and fuzzing tests have been conducted to ensure functionality and security. See [`ByzantineDepositTest.t.sol`](test/ByzantineDepositTest.t.sol) |
+| **stETH Rebasing NOT tested**                                                                           | Simulations of the accumulated PoS rewards of holding `stETH` have not been performed. See [`ByzantineDepositTest.t.sol:397`](test/ByzantineDepositTest.t.sol#L442)      |
+| **[`Pausable`](src/permissions/Pausable.sol) & [`PauserRegistry`](src/permissions/PauserRegistry.sol)** | Taken from audited Eigen Layer repository - no additional audit needed                                                                                                   |
