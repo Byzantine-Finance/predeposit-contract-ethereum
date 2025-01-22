@@ -226,15 +226,19 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     /* ============== ADMIN FUNCTIONS ============== */
 
     /**
-     * @notice Sets whether an address is authorized to deposit in this contract
-     * @param _address The address to set deposit permissions for
-     * @param _canDeposit Boolean indicating if the address should be allowed to deposit or not
+     * @notice Sets whether some addresses are authorized to deposit in this contract
+     * @param _addr The addresses to set deposit permissions for
+     * @param _canDeposit Boolean indicating if the addresses should be allowed to deposit or not
      * @dev Only callable by the owner
      */
-    function setCanDeposit(address _address, bool _canDeposit) external onlyOwner {
-        require(_address != address(0), "ByzantineDeposit.setCanDeposit: zero address input");
-        canDeposit[_address] = _canDeposit;
-        emit DepositorStatusChanged(_address, _canDeposit);
+    function setCanDeposit(address[] calldata _addr, bool _canDeposit) external onlyOwner {
+        for (uint256 i; i < _addr.length;) {
+            canDeposit[_addr[i]] = _canDeposit;
+            emit DepositorStatusChanged(_addr[i], _canDeposit);
+            unchecked {
+                ++i;
+            }
+        }
     }
 
     /**

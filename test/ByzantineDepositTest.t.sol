@@ -46,10 +46,10 @@ contract ByzantineDepositTest is Test {
     address[] public pausers = [makeAddr("pauser1"), makeAddr("pauser2")];
     address public unpauser = makeAddr("unpauser");
     // Depositors
-    address[] public depositors = [makeAddr("alice"), makeAddr("bob"), makeAddr("charlie")];
+    address[] public depositors = [makeAddr("alice"), makeAddr("bob")];
     address public alice = depositors[0];
     address public bob = depositors[1];
-    address public charlie = depositors[2];
+    address public charlie = makeAddr("charlie");
 
     // Initial balances
     uint256 public initialETHBalance = 200 ether;
@@ -99,10 +99,14 @@ contract ByzantineDepositTest is Test {
             deal(address(fUSDC), depositors[i], initialfUSDCBalance);
         }
 
+        // Set up charlie's balances
+        vm.deal(charlie, initialETHBalance);
+        _getStETH(charlie, initialStETHBalance);
+        deal(address(fUSDC), charlie, initialfUSDCBalance);
+
         // Whitelist alice and bob but not charlie
         vm.startPrank(byzantineAdmin);
-        deposit.setCanDeposit(alice, true);
-        deposit.setCanDeposit(bob, true);
+        deposit.setCanDeposit(depositors, true);
         vm.stopPrank();
 
         assertEq(vm.activeFork(), forkId);
@@ -157,14 +161,14 @@ contract ByzantineDepositTest is Test {
         // Should revert if non byzantineAdmin whitelists
         vm.startPrank(alice);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
-        deposit.setCanDeposit(makeAddr("charlie"), true);
+        deposit.setCanDeposit(_createArrayOfOne(charlie), true);
         vm.stopPrank();
 
         // The verification that Alice and Bob can deposit is done somewhere else
 
         // Unwhitelist Alice
         vm.prank(byzantineAdmin);
-        deposit.setCanDeposit(alice, false);
+        deposit.setCanDeposit(_createArrayOfOne(alice), false);
 
         // Verify that Alice cannot deposit anymore
         vm.startPrank(alice);
@@ -221,15 +225,9 @@ contract ByzantineDepositTest is Test {
         deposit.depositETH();
     }
 
-    function test_setCanDeposit_ZeroAddress() public {
-        vm.startPrank(byzantineAdmin);
-        vm.expectRevert(bytes("ByzantineDeposit.setCanDeposit: zero address input"));
-        deposit.setCanDeposit(address(0), true);
-    }
-
     function test_withdraw_failTransferEth() public {
         vm.startPrank(byzantineAdmin);
-        deposit.setCanDeposit(address(scUser), true);
+        deposit.setCanDeposit(_createArrayOfOne(address(scUser)), true);
 
         _unpauseWithdrawals();
 
@@ -490,5 +488,10 @@ contract ByzantineDepositTest is Test {
         vm.startPrank(unpauser);
         deposit.unpause(deposit.paused() & ~(1 << PAUSED_VAULTS_MOVES));
         vm.stopPrank();
+    }
+
+    function _createArrayOfOne(address addr) internal pure returns (address[] memory array) {
+        array = new address[](1);
+        array[0] = addr;
     }
 }
