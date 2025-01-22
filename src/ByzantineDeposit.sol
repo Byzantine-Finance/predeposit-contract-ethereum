@@ -49,6 +49,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     event MoveToVault(address indexed owner, IERC20 token, address vault, uint256 amount, address receiver);
     event DepositorStatusChanged(address indexed depositor, bool canDeposit);
     event DepositTokenAdded(IERC20 token);
+    event DepositTokenRemoved(IERC20 token);
     event PermissionlessDepositSet(bool permissionlessDeposit);
 
     /* ============== CONSTANTS + IMMUTABLES ============== */
@@ -103,6 +104,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
 
     /**
      * @notice Constructor for initializing the ByzantineDeposit contract
+     * @notice By default, the deposit of ETH, stETH and wstETH is allowed
      * @param _pauserRegistry The address of the pauser registry contract
      * @param initPausedStatus The initial paused status flags
      * @param _initialOwner The address that will be set as the owner of this contract
@@ -119,6 +121,9 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         _initializePauser(_pauserRegistry, initPausedStatus);
         stETHToken = _stETHToken;
         wstETH = _wstETH;
+        isDepositToken[beaconChainETHToken] = true;
+        isDepositToken[stETHToken] = true;
+        isDepositToken[wstETH] = true;
     }
 
     /* ============== EXTERNAL FUNCTIONS ============== */
@@ -128,6 +133,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
      * @dev Only callable by authorized addresses if permissionless deposit not allowed
      */
     function depositETH() external payable onlyWhenNotPaused(PAUSED_DEPOSITS) onlyIfCanDeposit(msg.sender) {
+        require(isDepositToken[beaconChainETHToken], "ByzantineDeposit.depositETH: beaconChainETH is not allowed to be deposited");
         require(msg.value > 0, "ByzantineDeposit.depositETH: no ETH sent");
         depositedAmount[msg.sender][beaconChainETHToken] += msg.value;
         emit Deposit(msg.sender, beaconChainETHToken, msg.value);
@@ -145,10 +151,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         IERC20 _token,
         uint256 _amount
     ) external onlyWhenNotPaused(PAUSED_DEPOSITS) onlyIfCanDeposit(msg.sender) {
-        require(
-            _token == stETHToken || isDepositToken[_token],
-            "ByzantineDeposit.depositERC20: token is not allowed to be deposited"
-        );
+        require(isDepositToken[_token], "ByzantineDeposit.depositERC20: token is not allowed to be deposited");
         _token.safeTransferFrom(msg.sender, address(this), _amount);
         uint256 amount = _amount;
         if (_token == stETHToken) {
@@ -250,12 +253,20 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     function addDepositToken(
         IERC20 _token
     ) external onlyOwner {
-        require(
-            (_token != beaconChainETHToken) && (_token != stETHToken),
-            "ByzantineDeposit.addDepositToken: beaconChainETH or stETH cannot be added"
-        );
         isDepositToken[_token] = true;
         emit DepositTokenAdded(_token);
+    }
+
+    /**
+     * @notice Remove a token from the list of allowed deposit tokens
+     * @param _token The ERC20 token contract address to remove from the allowed deposit tokens
+     * @dev Only callable by the owner
+     */
+    function removeDepositToken(
+        IERC20 _token
+    ) external onlyOwner {
+        isDepositToken[_token] = false;
+        emit DepositTokenRemoved(_token);
     }
 
     /**

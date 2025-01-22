@@ -187,20 +187,23 @@ contract ByzantineDepositTest is Test {
         deposit.depositERC20(fUSDC, 1 ether);
         vm.stopPrank();
 
-        // Should revert if the deposit token added is either stETH or beaconChainETH
-        vm.startPrank(byzantineAdmin);
-        vm.expectRevert(bytes("ByzantineDeposit.addDepositToken: beaconChainETH or stETH cannot be added"));
-        deposit.addDepositToken(stETH);
-        vm.expectRevert(bytes("ByzantineDeposit.addDepositToken: beaconChainETH or stETH cannot be added"));
-        deposit.addDepositToken(beaconChainETHToken);
-        vm.stopPrank();
-
         // Add fUSDC as a deposit token
         vm.prank(byzantineAdmin);
         deposit.addDepositToken(fUSDC);
 
         // Verify that it's possible to deposit fUSDC
         _depositfUSDC(alice, 1 ether);
+    }
+
+    function test_RemoveDepositToken() public {
+        // Remove beacon ETH as a deposit token
+        vm.prank(byzantineAdmin);
+        deposit.removeDepositToken(beaconChainETHToken);
+
+        // Verify that it's not possible to deposit beacon ETH
+        vm.startPrank(alice);
+        vm.expectRevert(bytes("ByzantineDeposit.depositETH: beaconChainETH is not allowed to be deposited"));
+        deposit.depositETH{value: 1 ether}();
     }
 
     function test_setPermissionlessDeposit() public {
