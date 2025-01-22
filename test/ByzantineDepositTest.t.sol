@@ -5,6 +5,7 @@ import {PauserRegistry} from "../src/permissions/PauserRegistry.sol";
 import {ByzantineDeposit} from "../src/ByzantineDeposit.sol";
 import {ERC4626Mock} from "./mocks/ERC4626Mock.t.sol";
 import {ERC7535Mock} from "./mocks/ERC7535Mock.t.sol";
+import {ERC7535} from "./mocks/ERC7535.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -409,6 +410,37 @@ contract ByzantineDepositTest is Test {
         assertEq(fUSDC.balanceOf(alice), initialfUSDCBalance - 2 * initialDeposit + withdrawnAmount);
         assertEq(vault4626fUSDC.balanceOf(alice), amountToMove); // vault shares
         assertEq(fUSDC.balanceOf(address(vault4626fUSDC)), amountToMove); // vault assets
+    }
+
+    function test_Move_MismatchedVaultReverts() public {
+        vm.prank(byzantineAdmin);
+        deposit.addDepositToken(fUSDC);
+
+        // Alice deposits various assets
+        _depositETH(alice, 5 ether);
+        _depositStETH(alice, 5 ether);
+        _depositfUSDC(alice, 5 ether);
+
+        // Unpause vault moves
+        _unpauseVaultMoves();
+
+        // Record the vaults
+        _recordVaults();
+
+        // Case 1: Should revert when trying to move ETH
+        vm.startPrank(alice);
+        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: mismatching assets"));
+        deposit.moveToVault(beaconChainETHToken, address(vault4626fUSDC), 5 ether, alice);
+
+        // Case 2: Should revert when trying to move ERC20 tokens to a ERC7535 vault
+        uint256 depositAmount = deposit.depositedAmount(alice, stETH);
+        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: mismatching assets"));
+        deposit.moveToVault(stETH, address(vault7535ETH), depositAmount, alice);
+
+        // Case 3: Should revert when trying to move mismatched ERC20 tokens to a ERC4626 vault
+        // testing with mainnet, revert reason from stETH.transferFrom() is ALLOWANCE_EXCEEDED
+        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: mismatching assets"));
+        deposit.moveToVault(fUSDC, address(vault4626stETH), 5 ether, alice);
     }
 
     function test_Move_RevertWhenNonRecordedVault() public {
