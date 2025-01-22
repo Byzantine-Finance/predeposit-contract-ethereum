@@ -226,7 +226,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         } else if (_token == stETHToken) {
             _amount = wstETH.unwrap(_amount);
         }
-        _token.approve(_vault, _amount);
+        _token.forceApprove(_vault, _amount);
         IERC4626(_vault).deposit(_amount, _receiver);
         emit MoveToVault(msg.sender, _token, _vault, _amount, _receiver);
     }
