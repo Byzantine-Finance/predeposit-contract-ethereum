@@ -206,6 +206,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         uint256 _amount,
         address _receiver
     ) external onlyWhenNotPaused(PAUSED_VAULTS_MOVES) nonReentrant {
+        require(canDeposit[msg.sender], "ByzantineDeposit.moveToVault: address is not authorized to move tokens");
         require(isByzantineVault[_vault], "ByzantineDeposit.moveToVault: vault is not recorded");
         require(address(_token) == IERC4626(_vault).asset(), "ByzantineDeposit.moveToVault: mismatching assets");
         require(

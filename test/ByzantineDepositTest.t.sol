@@ -165,7 +165,8 @@ contract ByzantineDepositTest is Test {
         deposit.setCanDeposit(_createArrayOfOne(charlie), true);
         vm.stopPrank();
 
-        // The verification that Alice and Bob can deposit is done somewhere else
+        // Alice deposits stETH
+        _depositStETH(alice, 5 ether);
 
         // Unwhitelist Alice
         vm.prank(byzantineAdmin);
@@ -178,6 +179,15 @@ contract ByzantineDepositTest is Test {
         vm.expectRevert(bytes("ByzantineDeposit.onlyIfCanDeposit: address is not authorized to deposit"));
         deposit.depositERC20(stETH, 1 ether);
         vm.stopPrank();
+
+        // Unpause vault moves
+        _unpauseVaultMoves();
+        _recordVaults();
+
+        // Alice shoudn't be able to move her stETH to the vault
+        vm.prank(alice);
+        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: address is not authorized to move tokens"));
+        deposit.moveToVault(stETH, address(vault4626stETH), 3 ether, alice);
     }
 
     function test_AddDepositToken() public {
