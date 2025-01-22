@@ -23,6 +23,8 @@ interface ILido {
     ) external view returns (uint256);
 }
 
+contract SmartContractUser {}
+
 contract ByzantineDepositTest is Test {
     // Contract instances
     ByzantineDeposit public deposit;
@@ -30,6 +32,8 @@ contract ByzantineDepositTest is Test {
     IERC20 public stETH;
     IwstETH public wstETH;
     IERC20 public fUSDC;
+
+    SmartContractUser public scUser;
 
     // Byzantine Vaults Mocks
     ERC4626Mock public vault4626stETH;
@@ -69,6 +73,7 @@ contract ByzantineDepositTest is Test {
     function setUp() public {
         // Set the testing environment
         forkId = vm.createSelectFork(RPC_URL);
+        scUser = new SmartContractUser();
 
         // Contract addresses on Holesky
         stETH = IERC20(0x3F1c547b21f65e10480dE3ad8E19fAAC46C95034);
@@ -209,6 +214,33 @@ contract ByzantineDepositTest is Test {
     }
 
     /* ===================== TEST EXTERNAL FUNCTIONS ===================== */
+
+    function test_depositETH_ZeroValue() public {
+        vm.startPrank(alice);
+        vm.expectRevert(bytes("ByzantineDeposit.depositETH: no ETH sent"));
+        deposit.depositETH();
+    }
+
+    function test_setCanDeposit_ZeroAddress() public {
+        vm.startPrank(byzantineAdmin);
+        vm.expectRevert(bytes("ByzantineDeposit.setCanDeposit: zero address input"));
+        deposit.setCanDeposit(address(0), true);
+    }
+
+    function test_withdraw_failTransferEth() public {
+        vm.startPrank(byzantineAdmin);
+        deposit.setCanDeposit(address(scUser), true);
+
+        _unpauseWithdrawals();
+
+        deal(address(scUser), 1 ether);
+        vm.startPrank(address(scUser));
+        deposit.depositETH{value: 1 ether}();
+
+        IERC20 token = deposit.beaconChainETHToken();
+        vm.expectRevert("ByzantineDeposit.withdraw: ETH transfer to withdrawer failed");
+        deposit.withdraw(token, 1 ether);
+    }
 
     function test_DepositWithdrawMoveETH(uint256 initialDeposit, uint256 withdrawnAmount) public {
         vm.assume(initialDeposit > 0 && withdrawnAmount > 0);
