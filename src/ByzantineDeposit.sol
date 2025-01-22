@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "./permissions/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -38,7 +39,7 @@ interface IwstETH is IERC20 {
  *      stablecoins, wrapped BTC, iBTC and any other ERC20 can be whitelisted as long as they're not rebasing
  *      /!\ stETH is the only rebasing token allowed /!\
  */
-contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
+contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     /* ============== EVENTS ============== */
