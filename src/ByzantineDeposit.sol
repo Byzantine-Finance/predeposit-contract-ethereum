@@ -30,7 +30,7 @@ interface IwstETH is IERC20 {
 }
 
 /**
- * @title ByzantineDeposit contract to allow early liquidity provider to deposit on the Byzantine procotol
+ * @title ByzantineDeposit contract to allow early liquidity provider to deposit on the Byzantine protocol
  * @author Byzantine Finance
  * @notice This contract allows the deposit of any token as long as it is whitelisted as a deposit token.
  *         Deposits will be allowed for whitelisted addresses only.
