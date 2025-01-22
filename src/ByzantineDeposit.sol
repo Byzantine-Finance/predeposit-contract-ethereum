@@ -202,7 +202,8 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         IERC20 _token,
         address _vault,
         uint256 _amount,
-        address _receiver
+        address _receiver,
+        uint256 _minSharesOut
     ) external onlyWhenNotPaused(PAUSED_VAULTS_MOVES) nonReentrant {
         require(canDeposit[msg.sender], "ByzantineDeposit.moveToVault: address is not authorized to move tokens");
         require(isByzantineVault[_vault], "ByzantineDeposit.moveToVault: vault is not recorded");
@@ -216,15 +217,24 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
             depositedAmount[msg.sender][_token] -= _amount;
         }
 
+        uint256 sharesBefore;
+        uint256 sharesAfter;
         if (_token == beaconChainETHToken) {
+            sharesBefore = IERC7535(_vault).balanceOf(_receiver);
             IERC7535(_vault).deposit{value: _amount}(_amount, _receiver);
-            emit MoveToVault(msg.sender, _token, _vault, _amount, _receiver);
-            return;
-        } else if (_token == stETHToken) {
-            _amount = wstETH.unwrap(_amount);
-        }
-        _token.forceApprove(_vault, _amount);
-        IERC4626(_vault).deposit(_amount, _receiver);
+            sharesAfter = IERC7535(_vault).balanceOf(_receiver);
+        } else {
+            if (_token == stETHToken) {
+                _amount = wstETH.unwrap(_amount);
+            }
+            _token.forceApprove(_vault, _amount);
+            sharesBefore = IERC4626(_vault).balanceOf(_receiver);
+            IERC4626(_vault).deposit(_amount, _receiver);
+            sharesAfter = IERC4626(_vault).balanceOf(_receiver);
+        } 
+
+        uint256 sharesReceived = sharesAfter - sharesBefore;
+        require(sharesReceived >= _minSharesOut, "ByzantineDeposit.moveToVault: insufficient shares received");
         emit MoveToVault(msg.sender, _token, _vault, _amount, _receiver);
     }
 
