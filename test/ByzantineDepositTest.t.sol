@@ -123,7 +123,7 @@ contract ByzantineDepositTest is Test {
         // Should revert if withdrawals and vault moves are paused
         vm.prank(alice);
         vm.expectRevert(bytes("Pausable: index is paused"));
-        deposit.withdraw(beaconChainETHToken, 1 ether);
+        deposit.withdraw(beaconChainETHToken, 1 ether, alice);
         vm.expectRevert(bytes("Pausable: index is paused"));
         deposit.moveToVault(stETH, address(vault4626stETH), 1 ether, alice);
         vm.stopPrank();
@@ -135,7 +135,7 @@ contract ByzantineDepositTest is Test {
 
         // Alice should be able to withdraw and move ETH
         vm.startPrank(alice);
-        deposit.withdraw(stETH, 1 ether);
+        deposit.withdraw(stETH, 1 ether, alice);
         deposit.moveToVault(stETH, address(vault4626stETH), 1 ether, alice);
         vm.stopPrank();
 
@@ -147,7 +147,7 @@ contract ByzantineDepositTest is Test {
         // Should revert now that withdrawals and deposits are paused
         vm.prank(alice);
         vm.expectRevert(bytes("Pausable: index is paused"));
-        deposit.withdraw(beaconChainETHToken, 1 ether);
+        deposit.withdraw(beaconChainETHToken, 1 ether, alice);
         vm.expectRevert(bytes("Pausable: index is paused"));
         deposit.depositETH{value: 1 ether}();
         stETH.approve(address(deposit), 1 ether);
@@ -260,7 +260,7 @@ contract ByzantineDepositTest is Test {
 
         IERC20 token = deposit.beaconChainETHToken();
         vm.expectRevert("ByzantineDeposit.withdraw: ETH transfer to withdrawer failed");
-        deposit.withdraw(token, 1 ether);
+        deposit.withdraw(token, 1 ether, address(scUser));
     }
 
     function test_DepositWithdrawMoveETH(uint256 initialDeposit, uint256 withdrawnAmount) public {
@@ -282,7 +282,7 @@ contract ByzantineDepositTest is Test {
         // Withdrawal failed if it exceeds the deposited amount
         vm.prank(alice);
         vm.expectRevert(bytes("ByzantineDeposit.withdraw: not enough deposited amount for token"));
-        deposit.withdraw(beaconChainETHToken, initialDeposit + 1 ether);
+        deposit.withdraw(beaconChainETHToken, initialDeposit + 1 ether, alice);
 
         // Alice withdraws some ETH
         _withdraw(alice, beaconChainETHToken, withdrawnAmount);
@@ -497,7 +497,7 @@ contract ByzantineDepositTest is Test {
     // withdraw tokens from the contract
     function _withdraw(address withdrawer, IERC20 token, uint256 amount) internal {
         vm.prank(withdrawer);
-        deposit.withdraw(token, amount);
+        deposit.withdraw(token, amount, withdrawer);
     }
 
     // move tokens to a vault

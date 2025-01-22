@@ -45,7 +45,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     /* ============== EVENTS ============== */
 
     event Deposit(address indexed sender, IERC20 token, uint256 amount);
-    event Withdraw(address indexed sender, IERC20 token, uint256 amount);
+    event Withdraw(address indexed sender, IERC20 token, uint256 amount, address receiver);
     event MoveToVault(address indexed owner, IERC20 token, address vault, uint256 amount, address receiver);
     event DepositorStatusChanged(address indexed depositor, bool canDeposit);
     event DepositTokenAdded(IERC20 token);
@@ -168,9 +168,10 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
      * @notice Withdraw deposited tokens from the contract
      * @param _token The ERC20 token address to withdraw. 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE for beacon chain ETH
      * @param _amount The amount of the token to withdraw. If stETH, `_amount` must be the amount of wstETH during the deposit(s)
+     * @param _receiver The address who will receive the withdrawn tokens
      * @dev If stETH is withdrawn, it will be wstETH will be unwrapped to stETH
      */
-    function withdraw(IERC20 _token, uint256 _amount) external onlyWhenNotPaused(PAUSED_WITHDRAWALS) nonReentrant {
+    function withdraw(IERC20 _token, uint256 _amount, address _receiver) external onlyWhenNotPaused(PAUSED_WITHDRAWALS) nonReentrant {
         require(
             depositedAmount[msg.sender][_token] >= _amount,
             "ByzantineDeposit.withdraw: not enough deposited amount for token"
@@ -181,15 +182,15 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         }
 
         if (_token == beaconChainETHToken) {
-            (bool success,) = msg.sender.call{value: _amount}("");
+            (bool success,) = _receiver.call{value: _amount}("");
             require(success, "ByzantineDeposit.withdraw: ETH transfer to withdrawer failed");
-            emit Withdraw(msg.sender, _token, _amount);
+            emit Withdraw(msg.sender, _token, _amount, _receiver);
             return;
         } else if (_token == stETHToken) {
             _amount = wstETH.unwrap(_amount);
         }
-        _token.safeTransfer(msg.sender, _amount);
-        emit Withdraw(msg.sender, _token, _amount);
+        _token.safeTransfer(_receiver, _amount);
+        emit Withdraw(msg.sender, _token, _amount, _receiver);
     }
 
     /**
