@@ -220,6 +220,15 @@ contract ByzantineDepositTest is Test {
         _depositETH(charlie, 0.5 ether);
     }
 
+    function test_delistVault() public {
+        _recordVaults();
+
+        // Delist the vault
+        vm.prank(byzantineAdmin);
+        deposit.delistByzantineVault(address(vault7535ETH));
+        assertEq(deposit.isByzantineVault(address(vault7535ETH)), false);
+    }
+
     /* ===================== TEST EXTERNAL FUNCTIONS ===================== */
 
     function test_depositETH_ZeroValue() public {

@@ -50,6 +50,8 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     event DepositorStatusChanged(address indexed depositor, bool canDeposit);
     event DepositTokenAdded(IERC20 token);
     event DepositTokenRemoved(IERC20 token);
+    event ByzantineVaultRecorded(address vault);
+    event ByzantineVaultDelisted(address vault);
     event PermissionlessDepositSet(bool permissionlessDeposit);
 
     /* ============== CONSTANTS + IMMUTABLES ============== */
@@ -292,9 +294,20 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     ) external onlyOwner {
         for (uint256 i; i < _vaults.length;) {
             isByzantineVault[_vaults[i]] = true;
+            emit ByzantineVaultRecorded(_vaults[i]);
             unchecked {
                 ++i;
             }
         }
+    }
+
+    /**
+     * @notice Delist a Byzantine vault in case the whitelisting was made in error
+     * @param _vault The address of the Byzantine vault to delist
+     * @dev Only callable by the owner
+     */
+    function delistByzantineVault(address _vault) external onlyOwner {
+        isByzantineVault[_vault] = false;
+        emit ByzantineVaultDelisted(_vault);
     }
 }
