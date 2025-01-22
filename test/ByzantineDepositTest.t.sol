@@ -62,10 +62,9 @@ contract ByzantineDepositTest is Test {
 
     // Pause indices flags
     uint8 private constant PAUSED_DEPOSITS = 0;
-    uint8 private constant PAUSED_WITHDRAWALS = 1;
-    uint8 private constant PAUSED_VAULTS_MOVES = 2;
+    uint8 private constant PAUSED_VAULTS_MOVES = 1;
     // Initial paused status
-    uint256 private initialPausedStatus = 1 << PAUSED_VAULTS_MOVES | 1 << PAUSED_WITHDRAWALS;
+    uint256 private initialPausedStatus = 1 << PAUSED_VAULTS_MOVES;
 
     // RPC URL of the test environnement
     string private RPC_URL = vm.envString("HOLESKY_RPC_URL");
@@ -116,38 +115,33 @@ contract ByzantineDepositTest is Test {
     /* ===================== TEST PAUSABILITY ===================== */
 
     function test_PauseFunctions() public {
-        // Alice deposits ETH and stETH: initial contract state
+        // Alice deposits ETH and stETH and withdraw some: initial contract state
         _depositETH(alice, 5 ether);
         _depositStETH(alice, 5 ether);
+        _withdraw(alice, beaconChainETHToken, 1 ether);
 
-        // Should revert if withdrawals and vault moves are paused
+        // Should revert if vault moves are paused
         vm.prank(alice);
         vm.expectRevert(bytes("Pausable: index is paused"));
-        deposit.withdraw(beaconChainETHToken, 1 ether, alice);
-        vm.expectRevert(bytes("Pausable: index is paused"));
         deposit.moveToVault(stETH, address(vault4626stETH), 1 ether, alice);
-        vm.stopPrank();
 
-        // Unpause withdrawals and vault moves
-        _unpauseWithdrawals();
+        // Unpause vault moves
         _unpauseVaultMoves();
         _recordVaults();
 
-        // Alice should be able to withdraw and move ETH
-        vm.startPrank(alice);
-        deposit.withdraw(stETH, 1 ether, alice);
-        deposit.moveToVault(stETH, address(vault4626stETH), 1 ether, alice);
-        vm.stopPrank();
-
-        // Pause deposits and withdrawals
-        vm.startPrank(pausers[0]);
-        deposit.pause(deposit.paused() | (1 << PAUSED_WITHDRAWALS | 1 << PAUSED_DEPOSITS));
-        vm.stopPrank();
-
-        // Should revert now that withdrawals and deposits are paused
+        // Alice should be able to move ETH
         vm.prank(alice);
+        deposit.moveToVault(stETH, address(vault4626stETH), 1 ether, alice);
+
+        // Pause deposits and vault moves
+        vm.startPrank(pausers[0]);
+        deposit.pause(deposit.paused() | (1 << PAUSED_DEPOSITS | 1 << PAUSED_VAULTS_MOVES));
+        vm.stopPrank();
+
+        // Should revert now that vault moves and deposits are paused
+        vm.startPrank(alice);
         vm.expectRevert(bytes("Pausable: index is paused"));
-        deposit.withdraw(beaconChainETHToken, 1 ether, alice);
+        deposit.moveToVault(stETH, address(vault4626stETH), 1 ether, alice);
         vm.expectRevert(bytes("Pausable: index is paused"));
         deposit.depositETH{value: 1 ether}();
         stETH.approve(address(deposit), 1 ether);
@@ -252,8 +246,6 @@ contract ByzantineDepositTest is Test {
         vm.startPrank(byzantineAdmin);
         deposit.setCanDeposit(_createArrayOfOne(address(scUser)), true);
 
-        _unpauseWithdrawals();
-
         deal(address(scUser), 1 ether);
         vm.startPrank(address(scUser));
         deposit.depositETH{value: 1 ether}();
@@ -275,9 +267,6 @@ contract ByzantineDepositTest is Test {
         assertEq(deposit.depositedAmount(alice, beaconChainETHToken), initialDeposit);
         assertEq(address(deposit).balance, initialDeposit);
         assertEq(alice.balance, initialStETHBalance - initialDeposit);
-
-        // Unpause withdrawals
-        _unpauseWithdrawals();
 
         // Withdrawal failed if it exceeds the deposited amount
         vm.prank(alice);
@@ -338,9 +327,6 @@ contract ByzantineDepositTest is Test {
         // Simulate stETH rebasing (for both alice and bob)
         _rebaseStETH(2 * rebasingAmount);
 
-        // Unpause withdrawals
-        _unpauseWithdrawals();
-
         // Alice withdraws all her stETH
         _withdraw(alice, stETH, wstETHAmountAlice);
 
@@ -396,9 +382,6 @@ contract ByzantineDepositTest is Test {
         // Verify balances
         assertEq(deposit.depositedAmount(alice, fUSDC), 2 * initialDeposit);
         assertEq(fUSDC.balanceOf(alice), initialfUSDCBalance - 2 * initialDeposit);
-
-        // Unpause withdrawals
-        _unpauseWithdrawals();
 
         // Alice withdraws some fUSDC
         _withdraw(alice, fUSDC, withdrawnAmount);
@@ -530,12 +513,6 @@ contract ByzantineDepositTest is Test {
         // vm.prank(charlie);
         // stETH.transfer(address(wstETH), amount);
         /// TODO: find a way to simulate stETH rebasing on foundry tests
-    }
-
-    function _unpauseWithdrawals() internal {
-        vm.startPrank(unpauser);
-        deposit.unpause(deposit.paused() & ~(1 << PAUSED_WITHDRAWALS));
-        vm.stopPrank();
     }
 
     function _unpauseVaultMoves() internal {

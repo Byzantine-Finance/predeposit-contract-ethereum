@@ -59,11 +59,8 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     /// @dev Index for flag that pauses deposits when set
     uint8 internal constant PAUSED_DEPOSITS = 0;
 
-    /// @dev Index for flag that pauses withdrawals when set.
-    uint8 internal constant PAUSED_WITHDRAWALS = 1;
-
     /// @dev Index for flag that pauses Byzantine vaults moves when set.
-    uint8 internal constant PAUSED_VAULTS_MOVES = 2;
+    uint8 internal constant PAUSED_VAULTS_MOVES = 1;
 
     /// @dev Canonical, virtual beacon chain ETH token
     IERC20 public constant beaconChainETHToken = IERC20(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
@@ -171,7 +168,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
      * @param _receiver The address who will receive the withdrawn tokens
      * @dev If stETH is withdrawn, it will be wstETH will be unwrapped to stETH
      */
-    function withdraw(IERC20 _token, uint256 _amount, address _receiver) external onlyWhenNotPaused(PAUSED_WITHDRAWALS) nonReentrant {
+    function withdraw(IERC20 _token, uint256 _amount, address _receiver) external nonReentrant {
         require(
             depositedAmount[msg.sender][_token] >= _amount,
             "ByzantineDeposit.withdraw: not enough deposited amount for token"
