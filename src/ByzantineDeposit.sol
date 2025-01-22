@@ -86,7 +86,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     mapping(address => bool) public isByzantineVault;
 
     /// @dev If turned to true, public deposits will be allowed.
-    bool public isPermissionlessDeposit = false;
+    bool public isPermissionlessDeposit;
 
     /* ============== MODIFIERS ============== */
 
@@ -174,17 +174,17 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
             // Overflow not possible because of previous check
             depositedAmount[msg.sender][_token] -= _amount;
         }
-        uint256 amount = _amount;
+
         if (_token == beaconChainETHToken) {
-            (bool success,) = msg.sender.call{value: amount}("");
+            (bool success,) = msg.sender.call{value: _amount}("");
             require(success, "ByzantineDeposit.withdraw: ETH transfer to withdrawer failed");
-            emit Withdraw(msg.sender, _token, amount);
+            emit Withdraw(msg.sender, _token, _amount);
             return;
         } else if (_token == stETHToken) {
-            amount = wstETH.unwrap(_amount);
+            _amount = wstETH.unwrap(_amount);
         }
-        _token.safeTransfer(msg.sender, amount);
-        emit Withdraw(msg.sender, _token, amount);
+        _token.safeTransfer(msg.sender, _amount);
+        emit Withdraw(msg.sender, _token, _amount);
     }
 
     /**
@@ -210,17 +210,17 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
             // Overflow not possible because of previous check
             depositedAmount[msg.sender][_token] -= _amount;
         }
-        uint256 amount = _amount;
+
         if (_token == beaconChainETHToken) {
-            IERC7535(_vault).deposit{value: amount}(amount, _receiver);
-            emit MoveToVault(msg.sender, _token, _vault, amount, _receiver);
+            IERC7535(_vault).deposit{value: _amount}(_amount, _receiver);
+            emit MoveToVault(msg.sender, _token, _vault, _amount, _receiver);
             return;
         } else if (_token == stETHToken) {
-            amount = wstETH.unwrap(_amount);
+            _amount = wstETH.unwrap(_amount);
         }
-        _token.approve(_vault, amount);
-        IERC4626(_vault).deposit(amount, _receiver);
-        emit MoveToVault(msg.sender, _token, _vault, amount, _receiver);
+        _token.approve(_vault, _amount);
+        IERC4626(_vault).deposit(_amount, _receiver);
+        emit MoveToVault(msg.sender, _token, _vault, _amount, _receiver);
     }
 
     /* ============== ADMIN FUNCTIONS ============== */
@@ -275,7 +275,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     function recordByzantineVaults(
         address[] calldata _vaults
     ) external onlyOwner {
-        for (uint256 i = 0; i < _vaults.length;) {
+        for (uint256 i; i < _vaults.length;) {
             isByzantineVault[_vaults[i]] = true;
             unchecked {
                 ++i;
