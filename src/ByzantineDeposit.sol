@@ -225,7 +225,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
             sharesBefore = IERC4626(_vault).balanceOf(_receiver);
             IERC4626(_vault).deposit(_amount, _receiver);
             sharesAfter = IERC4626(_vault).balanceOf(_receiver);
-        } 
+        }
 
         uint256 sharesReceived = sharesAfter - sharesBefore;
         if (sharesReceived < _minSharesOut) revert InsufficientSharesReceived();
@@ -310,12 +310,13 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
      * @param _vault The address of the Byzantine vault to delist
      * @dev Only callable by the owner
      */
-    function delistByzantineVault(address _vault) external onlyOwner {
+    function delistByzantineVault(
+        address _vault
+    ) external onlyOwner {
         isByzantineVault[_vault] = false;
         emit ByzantineVaultDelisted(_vault);
     }
 
-    
     /* ============== CUSTOM ERRORS ============== */
 
     error NotAuthorizedToDeposit(address sender);

@@ -28,9 +28,9 @@ interface ILido {
 contract ERC7535MockZero is ERC7535Mock {
     constructor(string memory _name, string memory _symbol) ERC7535Mock(_name, _symbol) {}
 
-    function deposit(uint256, address) payable public override returns (uint256 shares) {
+    function deposit(uint256, address) public payable override returns (uint256 shares) {
         return 0;
-    } 
+    }
 }
 
 contract SmartContractUser {}
@@ -281,7 +281,9 @@ contract ByzantineDepositTest is Test {
 
         // Withdrawal failed if it exceeds the deposited amount
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.InsufficientDepositedBalance.selector, alice, beaconChainETHToken));
+        vm.expectRevert(
+            abi.encodeWithSelector(ByzantineDeposit.InsufficientDepositedBalance.selector, alice, beaconChainETHToken)
+        );
         deposit.withdraw(beaconChainETHToken, initialDeposit + 1 ether, alice);
 
         // Alice withdraws some ETH
@@ -300,9 +302,15 @@ contract ByzantineDepositTest is Test {
         // Vault moves failed if it exceeds the deposited amount
         vm.startPrank(alice);
         uint256 minSharesOut = vault7535ETH.previewDeposit(initialDeposit - withdrawnAmount + 0.1 ether);
-        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.InsufficientDepositedBalance.selector, alice, beaconChainETHToken));
+        vm.expectRevert(
+            abi.encodeWithSelector(ByzantineDeposit.InsufficientDepositedBalance.selector, alice, beaconChainETHToken)
+        );
         deposit.moveToVault(
-            beaconChainETHToken, address(vault7535ETH), (initialDeposit - withdrawnAmount) + 0.1 ether, alice, minSharesOut
+            beaconChainETHToken,
+            address(vault7535ETH),
+            (initialDeposit - withdrawnAmount) + 0.1 ether,
+            alice,
+            minSharesOut
         );
         vm.stopPrank();
 
@@ -550,7 +558,9 @@ contract ByzantineDepositTest is Test {
         vm.stopPrank();
     }
 
-    function _createArrayOfOne(address addr) internal pure returns (address[] memory array) {
+    function _createArrayOfOne(
+        address addr
+    ) internal pure returns (address[] memory array) {
         array = new address[](1);
         array[0] = addr;
     }
