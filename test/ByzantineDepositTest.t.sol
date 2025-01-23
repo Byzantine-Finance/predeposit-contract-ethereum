@@ -179,9 +179,9 @@ contract ByzantineDepositTest is Test {
 
         // Verify that Alice cannot deposit anymore
         vm.startPrank(alice);
-        vm.expectRevert(bytes("ByzantineDeposit.onlyIfCanDeposit: address is not authorized to deposit"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAuthorizedToDeposit.selector, alice));
         deposit.depositETH{value: 1 ether}();
-        vm.expectRevert(bytes("ByzantineDeposit.onlyIfCanDeposit: address is not authorized to deposit"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAuthorizedToDeposit.selector, alice));
         deposit.depositERC20(stETH, 1 ether);
         vm.stopPrank();
 
@@ -199,7 +199,7 @@ contract ByzantineDepositTest is Test {
         // Verify that it's not possible to deposit non whitelisted tokens
         vm.startPrank(alice);
         fUSDC.approve(address(deposit), 1 ether);
-        vm.expectRevert(bytes("ByzantineDeposit.depositERC20: token is not allowed to be deposited"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAllowedDepositToken.selector, fUSDC));
         deposit.depositERC20(fUSDC, 1 ether);
         vm.stopPrank();
 
@@ -218,14 +218,14 @@ contract ByzantineDepositTest is Test {
 
         // Verify that it's not possible to deposit beacon ETH
         vm.startPrank(alice);
-        vm.expectRevert(bytes("ByzantineDeposit.depositETH: beaconChainETH is not allowed to be deposited"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAllowedDepositToken.selector, beaconChainETHToken));
         deposit.depositETH{value: 1 ether}();
     }
 
     function test_setPermissionlessDeposit() public {
         // Verify that Charlie cannot deposit
         vm.prank(charlie);
-        vm.expectRevert(bytes("ByzantineDeposit.onlyIfCanDeposit: address is not authorized to deposit"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAuthorizedToDeposit.selector, charlie));
         deposit.depositETH{value: 0.5 ether}();
 
         // Set permissionless deposit to true
@@ -249,7 +249,7 @@ contract ByzantineDepositTest is Test {
 
     function test_depositETH_ZeroValue() public {
         vm.startPrank(alice);
-        vm.expectRevert(bytes("ByzantineDeposit.depositETH: no ETH sent"));
+        vm.expectRevert(ByzantineDeposit.ZeroETHSent.selector);
         deposit.depositETH();
     }
 
@@ -262,7 +262,7 @@ contract ByzantineDepositTest is Test {
         deposit.depositETH{value: 1 ether}();
 
         IERC20 token = deposit.beaconChainETHToken();
-        vm.expectRevert("ByzantineDeposit.withdraw: ETH transfer to withdrawer failed");
+        vm.expectRevert(ByzantineDeposit.ETHTransferFailed.selector);
         deposit.withdraw(token, 1 ether, address(scUser));
     }
 
@@ -281,7 +281,7 @@ contract ByzantineDepositTest is Test {
 
         // Withdrawal failed if it exceeds the deposited amount
         vm.prank(alice);
-        vm.expectRevert(bytes("ByzantineDeposit.withdraw: not enough deposited amount for token"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.InsufficientDepositedBalance.selector, alice, beaconChainETHToken));
         deposit.withdraw(beaconChainETHToken, initialDeposit + 1 ether, alice);
 
         // Alice withdraws some ETH
@@ -300,7 +300,7 @@ contract ByzantineDepositTest is Test {
         // Vault moves failed if it exceeds the deposited amount
         vm.startPrank(alice);
         uint256 minSharesOut = vault7535ETH.previewDeposit(initialDeposit - withdrawnAmount + 0.1 ether);
-        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: not enough deposited amount for token"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.InsufficientDepositedBalance.selector, alice, beaconChainETHToken));
         deposit.moveToVault(
             beaconChainETHToken, address(vault7535ETH), (initialDeposit - withdrawnAmount) + 0.1 ether, alice, minSharesOut
         );
@@ -435,17 +435,17 @@ contract ByzantineDepositTest is Test {
 
         // Case 1: Should revert when trying to move ETH
         vm.startPrank(alice);
-        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: mismatching assets"));
+        vm.expectRevert(ByzantineDeposit.MismatchingAssets.selector);
         deposit.moveToVault(beaconChainETHToken, address(vault4626fUSDC), 5 ether, alice, 5 ether);
 
         // Case 2: Should revert when trying to move ERC20 tokens to a ERC7535 vault
         uint256 depositAmount = deposit.depositedAmount(alice, stETH);
-        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: mismatching assets"));
+        vm.expectRevert(ByzantineDeposit.MismatchingAssets.selector);
         deposit.moveToVault(stETH, address(vault7535ETH), depositAmount, alice, depositAmount);
 
         // Case 3: Should revert when trying to move mismatched ERC20 tokens to a ERC4626 vault
         // testing with mainnet, revert reason from stETH.transferFrom() is ALLOWANCE_EXCEEDED
-        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: mismatching assets"));
+        vm.expectRevert(ByzantineDeposit.MismatchingAssets.selector);
         deposit.moveToVault(fUSDC, address(vault4626stETH), 5 ether, alice, 5 ether);
     }
 
@@ -459,7 +459,7 @@ contract ByzantineDepositTest is Test {
 
         // Alice moves 1 ETH to the vault
         vm.startPrank(alice);
-        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: insufficient shares received"));
+        vm.expectRevert(ByzantineDeposit.InsufficientSharesReceived.selector);
         deposit.moveToVault(beaconChainETHToken, address(vault7535ETHZero), 1 ether, alice, 1 ether);
     }
 
@@ -473,9 +473,9 @@ contract ByzantineDepositTest is Test {
 
         // Should revert when trying to move to a non recorded vault
         vm.startPrank(alice);
-        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: vault is not recorded"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAllowedVault.selector, address(vault4626stETH)));
         deposit.moveToVault(stETH, address(vault4626stETH), 5 ether, alice, 5 ether);
-        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: vault is not recorded"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAllowedVault.selector, address(vault7535ETH)));
         deposit.moveToVault(beaconChainETHToken, address(vault7535ETH), 5 ether, alice, 5 ether);
         vm.stopPrank();
     }

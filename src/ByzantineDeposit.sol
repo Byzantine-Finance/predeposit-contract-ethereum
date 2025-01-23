@@ -94,7 +94,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         address _address
     ) {
         if (!isPermissionlessDeposit) {
-            require(canDeposit[_address], "ByzantineDeposit.onlyIfCanDeposit: address is not authorized to deposit");
+            if (!canDeposit[_address]) revert NotAuthorizedToDeposit(_address);
         }
         _;
     }
@@ -132,8 +132,8 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
      * @dev Only callable by authorized addresses if permissionless deposit not allowed
      */
     function depositETH() external payable onlyWhenNotPaused(PAUSED_DEPOSITS) onlyIfCanDeposit(msg.sender) {
-        require(isDepositToken[beaconChainETHToken], "ByzantineDeposit.depositETH: beaconChainETH is not allowed to be deposited");
-        require(msg.value > 0, "ByzantineDeposit.depositETH: no ETH sent");
+        if (!isDepositToken[beaconChainETHToken]) revert NotAllowedDepositToken(beaconChainETHToken);
+        if (msg.value <= 0) revert ZeroETHSent();
         depositedAmount[msg.sender][beaconChainETHToken] += msg.value;
         emit Deposit(msg.sender, beaconChainETHToken, msg.value);
     }
@@ -150,7 +150,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         IERC20 _token,
         uint256 _amount
     ) external onlyWhenNotPaused(PAUSED_DEPOSITS) onlyIfCanDeposit(msg.sender) {
-        require(isDepositToken[_token], "ByzantineDeposit.depositERC20: token is not allowed to be deposited");
+        if (!isDepositToken[_token]) revert NotAllowedDepositToken(_token);
         _token.safeTransferFrom(msg.sender, address(this), _amount);
         uint256 amount = _amount;
         if (_token == stETHToken) {
@@ -169,10 +169,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
      * @dev If stETH is withdrawn, it will be wstETH will be unwrapped to stETH
      */
     function withdraw(IERC20 _token, uint256 _amount, address _receiver) external nonReentrant {
-        require(
-            depositedAmount[msg.sender][_token] >= _amount,
-            "ByzantineDeposit.withdraw: not enough deposited amount for token"
-        );
+        if (depositedAmount[msg.sender][_token] < _amount) revert InsufficientDepositedBalance(msg.sender, _token);
         unchecked {
             // Overflow not possible because of previous check
             depositedAmount[msg.sender][_token] -= _amount;
@@ -180,7 +177,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
 
         if (_token == beaconChainETHToken) {
             (bool success,) = _receiver.call{value: _amount}("");
-            require(success, "ByzantineDeposit.withdraw: ETH transfer to withdrawer failed");
+            if (!success) revert ETHTransferFailed();
             emit Withdraw(msg.sender, _token, _amount, _receiver);
             return;
         } else if (_token == stETHToken) {
@@ -206,12 +203,9 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         uint256 _minSharesOut
     ) external onlyWhenNotPaused(PAUSED_VAULTS_MOVES) nonReentrant {
         require(canDeposit[msg.sender], "ByzantineDeposit.moveToVault: address is not authorized to move tokens");
-        require(isByzantineVault[_vault], "ByzantineDeposit.moveToVault: vault is not recorded");
-        require(address(_token) == IERC4626(_vault).asset(), "ByzantineDeposit.moveToVault: mismatching assets");
-        require(
-            depositedAmount[msg.sender][_token] >= _amount,
-            "ByzantineDeposit.moveToVault: not enough deposited amount for token"
-        );
+        if (!isByzantineVault[_vault]) revert NotAllowedVault(_vault);
+        if (address(_token) != IERC4626(_vault).asset()) revert MismatchingAssets();
+        if (depositedAmount[msg.sender][_token] < _amount) revert InsufficientDepositedBalance(msg.sender, _token);
         unchecked {
             // Overflow not possible because of previous check
             depositedAmount[msg.sender][_token] -= _amount;
@@ -234,7 +228,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         } 
 
         uint256 sharesReceived = sharesAfter - sharesBefore;
-        require(sharesReceived >= _minSharesOut, "ByzantineDeposit.moveToVault: insufficient shares received");
+        if (sharesReceived < _minSharesOut) revert InsufficientSharesReceived();
         emit MoveToVault(msg.sender, _token, _vault, _amount, _receiver);
     }
 
@@ -320,4 +314,16 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         isByzantineVault[_vault] = false;
         emit ByzantineVaultDelisted(_vault);
     }
+
+    
+    /* ============== CUSTOM ERRORS ============== */
+
+    error NotAuthorizedToDeposit(address sender);
+    error NotAllowedDepositToken(IERC20 token);
+    error NotAllowedVault(address vault);
+    error InsufficientDepositedBalance(address sender, IERC20 token);
+    error InsufficientSharesReceived();
+    error MismatchingAssets();
+    error ZeroETHSent();
+    error ETHTransferFailed();
 }
