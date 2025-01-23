@@ -133,7 +133,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
      */
     function depositETH() external payable onlyWhenNotPaused(PAUSED_DEPOSITS) onlyIfCanDeposit(msg.sender) {
         if (!isDepositToken[beaconChainETHToken]) revert NotAllowedDepositToken(beaconChainETHToken);
-        if (msg.value <= 0) revert ZeroETHSent();
+        if (msg.value == 0) revert ZeroETHSent();
         depositedAmount[msg.sender][beaconChainETHToken] += msg.value;
         emit Deposit(msg.sender, beaconChainETHToken, msg.value);
     }
