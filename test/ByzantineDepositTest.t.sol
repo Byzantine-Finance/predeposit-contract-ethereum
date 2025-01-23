@@ -5,11 +5,13 @@ import {PauserRegistry} from "../src/permissions/PauserRegistry.sol";
 import {ByzantineDeposit} from "../src/ByzantineDeposit.sol";
 import {ERC4626Mock} from "./mocks/ERC4626Mock.t.sol";
 import {ERC7535Mock} from "./mocks/ERC7535Mock.t.sol";
+import {ERC7535} from "./mocks/ERC7535.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {IPauserRegistry} from "../src/interfaces/IPauserRegistry.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IwstETH} from "../src/ByzantineDeposit.sol";
 
 import "forge-std/Test.sol";
@@ -23,6 +25,16 @@ interface ILido {
     ) external view returns (uint256);
 }
 
+contract ERC7535MockZero is ERC7535Mock {
+    constructor(string memory _name, string memory _symbol) ERC7535Mock(_name, _symbol) {}
+
+    function deposit(uint256, address) public payable override returns (uint256 shares) {
+        return 0;
+    }
+}
+
+contract SmartContractUser {}
+
 contract ByzantineDepositTest is Test {
     // Contract instances
     ByzantineDeposit public deposit;
@@ -31,10 +43,13 @@ contract ByzantineDepositTest is Test {
     IwstETH public wstETH;
     IERC20 public fUSDC;
 
+    SmartContractUser public scUser;
+
     // Byzantine Vaults Mocks
     ERC4626Mock public vault4626stETH;
     ERC4626Mock public vault4626fUSDC;
     ERC7535Mock public vault7535ETH;
+    ERC7535MockZero public vault7535ETHZero;
 
     // ByzantineAdmin address
     address public byzantineAdmin = makeAddr("byzantineAdmin");
@@ -42,10 +57,10 @@ contract ByzantineDepositTest is Test {
     address[] public pausers = [makeAddr("pauser1"), makeAddr("pauser2")];
     address public unpauser = makeAddr("unpauser");
     // Depositors
-    address[] public depositors = [makeAddr("alice"), makeAddr("bob"), makeAddr("charlie")];
+    address[] public depositors = [makeAddr("alice"), makeAddr("bob")];
     address public alice = depositors[0];
     address public bob = depositors[1];
-    address public charlie = depositors[2];
+    address public charlie = makeAddr("charlie");
 
     // Initial balances
     uint256 public initialETHBalance = 200 ether;
@@ -57,10 +72,9 @@ contract ByzantineDepositTest is Test {
 
     // Pause indices flags
     uint8 private constant PAUSED_DEPOSITS = 0;
-    uint8 private constant PAUSED_WITHDRAWALS = 1;
-    uint8 private constant PAUSED_VAULTS_MOVES = 2;
+    uint8 private constant PAUSED_VAULTS_MOVES = 1;
     // Initial paused status
-    uint256 private initialPausedStatus = 1 << PAUSED_VAULTS_MOVES | 1 << PAUSED_WITHDRAWALS;
+    uint256 private initialPausedStatus = 1 << PAUSED_VAULTS_MOVES;
 
     // RPC URL of the test environnement
     string private RPC_URL = vm.envString("HOLESKY_RPC_URL");
@@ -69,6 +83,7 @@ contract ByzantineDepositTest is Test {
     function setUp() public {
         // Set the testing environment
         forkId = vm.createSelectFork(RPC_URL);
+        scUser = new SmartContractUser();
 
         // Contract addresses on Holesky
         stETH = IERC20(0x3F1c547b21f65e10480dE3ad8E19fAAC46C95034);
@@ -79,6 +94,7 @@ contract ByzantineDepositTest is Test {
         vault4626stETH = new ERC4626Mock(stETH, "stETH Byzantine Vault Shares", "byzStETH");
         vault4626fUSDC = new ERC4626Mock(fUSDC, "fUSDC Byzantine Vault Shares", "byzFUSDC");
         vault7535ETH = new ERC7535Mock("ETH Byzantine Vault Shares", "byzETH");
+        vault7535ETHZero = new ERC7535MockZero("ETH Byzantine Vault Shares Z", "byzETHZ");
 
         // Deploy the PauserRegistry
         pauserRegistry = new PauserRegistry(pausers, unpauser);
@@ -94,10 +110,14 @@ contract ByzantineDepositTest is Test {
             deal(address(fUSDC), depositors[i], initialfUSDCBalance);
         }
 
+        // Set up charlie's balances
+        vm.deal(charlie, initialETHBalance);
+        _getStETH(charlie, initialStETHBalance);
+        deal(address(fUSDC), charlie, initialfUSDCBalance);
+
         // Whitelist alice and bob but not charlie
         vm.startPrank(byzantineAdmin);
-        deposit.setCanDeposit(alice, true);
-        deposit.setCanDeposit(bob, true);
+        deposit.setCanDeposit(depositors, true);
         vm.stopPrank();
 
         assertEq(vm.activeFork(), forkId);
@@ -106,38 +126,33 @@ contract ByzantineDepositTest is Test {
     /* ===================== TEST PAUSABILITY ===================== */
 
     function test_PauseFunctions() public {
-        // Alice deposits ETH and stETH: initial contract state
+        // Alice deposits ETH and stETH and withdraw some: initial contract state
         _depositETH(alice, 5 ether);
         _depositStETH(alice, 5 ether);
+        _withdraw(alice, beaconChainETHToken, 1 ether);
 
-        // Should revert if withdrawals and vault moves are paused
+        // Should revert if vault moves are paused
         vm.prank(alice);
         vm.expectRevert(bytes("Pausable: index is paused"));
-        deposit.withdraw(beaconChainETHToken, 1 ether);
-        vm.expectRevert(bytes("Pausable: index is paused"));
-        deposit.moveToVault(stETH, address(vault4626stETH), 1 ether, alice);
-        vm.stopPrank();
+        deposit.moveToVault(stETH, address(vault4626stETH), 1 ether, alice, 1 ether);
 
-        // Unpause withdrawals and vault moves
-        _unpauseWithdrawals();
+        // Unpause vault moves
         _unpauseVaultMoves();
         _recordVaults();
 
-        // Alice should be able to withdraw and move ETH
-        vm.startPrank(alice);
-        deposit.withdraw(stETH, 1 ether);
-        deposit.moveToVault(stETH, address(vault4626stETH), 1 ether, alice);
-        vm.stopPrank();
-
-        // Pause deposits and withdrawals
-        vm.startPrank(pausers[0]);
-        deposit.pause(deposit.paused() | (1 << PAUSED_WITHDRAWALS | 1 << PAUSED_DEPOSITS));
-        vm.stopPrank();
-
-        // Should revert now that withdrawals and deposits are paused
+        // Alice should be able to move ETH
         vm.prank(alice);
+        deposit.moveToVault(stETH, address(vault4626stETH), 1 ether, alice, 1 ether);
+
+        // Pause deposits and vault moves
+        vm.startPrank(pausers[0]);
+        deposit.pause(deposit.paused() | (1 << PAUSED_DEPOSITS | 1 << PAUSED_VAULTS_MOVES));
+        vm.stopPrank();
+
+        // Should revert now that vault moves and deposits are paused
+        vm.startPrank(alice);
         vm.expectRevert(bytes("Pausable: index is paused"));
-        deposit.withdraw(beaconChainETHToken, 1 ether);
+        deposit.moveToVault(stETH, address(vault4626stETH), 1 ether, alice, 1 ether);
         vm.expectRevert(bytes("Pausable: index is paused"));
         deposit.depositETH{value: 1 ether}();
         stETH.approve(address(deposit), 1 ether);
@@ -152,38 +167,40 @@ contract ByzantineDepositTest is Test {
         // Should revert if non byzantineAdmin whitelists
         vm.startPrank(alice);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
-        deposit.setCanDeposit(makeAddr("charlie"), true);
+        deposit.setCanDeposit(_createArrayOfOne(charlie), true);
         vm.stopPrank();
 
-        // The verification that Alice and Bob can deposit is done somewhere else
+        // Alice deposits stETH
+        _depositStETH(alice, 5 ether);
 
         // Unwhitelist Alice
         vm.prank(byzantineAdmin);
-        deposit.setCanDeposit(alice, false);
+        deposit.setCanDeposit(_createArrayOfOne(alice), false);
 
         // Verify that Alice cannot deposit anymore
         vm.startPrank(alice);
-        vm.expectRevert(bytes("ByzantineDeposit.onlyIfCanDeposit: address is not authorized to deposit"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAuthorizedToDeposit.selector, alice));
         deposit.depositETH{value: 1 ether}();
-        vm.expectRevert(bytes("ByzantineDeposit.onlyIfCanDeposit: address is not authorized to deposit"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAuthorizedToDeposit.selector, alice));
         deposit.depositERC20(stETH, 1 ether);
         vm.stopPrank();
+
+        // Unpause vault moves
+        _unpauseVaultMoves();
+        _recordVaults();
+
+        // Alice shoudn't be able to move her stETH to the vault
+        vm.prank(alice);
+        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: address is not authorized to move tokens"));
+        deposit.moveToVault(stETH, address(vault4626stETH), 3 ether, alice, 3 ether);
     }
 
     function test_AddDepositToken() public {
         // Verify that it's not possible to deposit non whitelisted tokens
         vm.startPrank(alice);
         fUSDC.approve(address(deposit), 1 ether);
-        vm.expectRevert(bytes("ByzantineDeposit.depositERC20: token is not allowed to be deposited"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAllowedDepositToken.selector, fUSDC));
         deposit.depositERC20(fUSDC, 1 ether);
-        vm.stopPrank();
-
-        // Should revert if the deposit token added is either stETH or beaconChainETH
-        vm.startPrank(byzantineAdmin);
-        vm.expectRevert(bytes("ByzantineDeposit.addDepositToken: beaconChainETH or stETH cannot be added"));
-        deposit.addDepositToken(stETH);
-        vm.expectRevert(bytes("ByzantineDeposit.addDepositToken: beaconChainETH or stETH cannot be added"));
-        deposit.addDepositToken(beaconChainETHToken);
         vm.stopPrank();
 
         // Add fUSDC as a deposit token
@@ -194,10 +211,21 @@ contract ByzantineDepositTest is Test {
         _depositfUSDC(alice, 1 ether);
     }
 
+    function test_RemoveDepositToken() public {
+        // Remove beacon ETH as a deposit token
+        vm.prank(byzantineAdmin);
+        deposit.removeDepositToken(beaconChainETHToken);
+
+        // Verify that it's not possible to deposit beacon ETH
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAllowedDepositToken.selector, beaconChainETHToken));
+        deposit.depositETH{value: 1 ether}();
+    }
+
     function test_setPermissionlessDeposit() public {
         // Verify that Charlie cannot deposit
         vm.prank(charlie);
-        vm.expectRevert(bytes("ByzantineDeposit.onlyIfCanDeposit: address is not authorized to deposit"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAuthorizedToDeposit.selector, charlie));
         deposit.depositETH{value: 0.5 ether}();
 
         // Set permissionless deposit to true
@@ -208,7 +236,35 @@ contract ByzantineDepositTest is Test {
         _depositETH(charlie, 0.5 ether);
     }
 
+    function test_delistVault() public {
+        _recordVaults();
+
+        // Delist the vault
+        vm.prank(byzantineAdmin);
+        deposit.delistByzantineVault(address(vault7535ETH));
+        assertEq(deposit.isByzantineVault(address(vault7535ETH)), false);
+    }
+
     /* ===================== TEST EXTERNAL FUNCTIONS ===================== */
+
+    function test_depositETH_ZeroValue() public {
+        vm.startPrank(alice);
+        vm.expectRevert(ByzantineDeposit.ZeroETHSent.selector);
+        deposit.depositETH();
+    }
+
+    function test_withdraw_failTransferEth() public {
+        vm.startPrank(byzantineAdmin);
+        deposit.setCanDeposit(_createArrayOfOne(address(scUser)), true);
+
+        deal(address(scUser), 1 ether);
+        vm.startPrank(address(scUser));
+        deposit.depositETH{value: 1 ether}();
+
+        IERC20 token = deposit.beaconChainETHToken();
+        vm.expectRevert(ByzantineDeposit.ETHTransferFailed.selector);
+        deposit.withdraw(token, 1 ether, address(scUser));
+    }
 
     function test_DepositWithdrawMoveETH(uint256 initialDeposit, uint256 withdrawnAmount) public {
         vm.assume(initialDeposit > 0 && withdrawnAmount > 0);
@@ -223,13 +279,12 @@ contract ByzantineDepositTest is Test {
         assertEq(address(deposit).balance, initialDeposit);
         assertEq(alice.balance, initialStETHBalance - initialDeposit);
 
-        // Unpause withdrawals
-        _unpauseWithdrawals();
-
         // Withdrawal failed if it exceeds the deposited amount
         vm.prank(alice);
-        vm.expectRevert(bytes("ByzantineDeposit.withdraw: not enough deposited amount for token"));
-        deposit.withdraw(beaconChainETHToken, initialDeposit + 1 ether);
+        vm.expectRevert(
+            abi.encodeWithSelector(ByzantineDeposit.InsufficientDepositedBalance.selector, alice, beaconChainETHToken)
+        );
+        deposit.withdraw(beaconChainETHToken, initialDeposit + 1 ether, alice);
 
         // Alice withdraws some ETH
         _withdraw(alice, beaconChainETHToken, withdrawnAmount);
@@ -245,13 +300,21 @@ contract ByzantineDepositTest is Test {
         _recordVaults();
 
         // Vault moves failed if it exceeds the deposited amount
-        vm.prank(alice);
-        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: not enough deposited amount for token"));
-        deposit.moveToVault(
-            beaconChainETHToken, address(vault7535ETH), (initialDeposit - withdrawnAmount) + 0.1 ether, alice
+        vm.startPrank(alice);
+        uint256 minSharesOut = vault7535ETH.previewDeposit(initialDeposit - withdrawnAmount + 0.1 ether);
+        vm.expectRevert(
+            abi.encodeWithSelector(ByzantineDeposit.InsufficientDepositedBalance.selector, alice, beaconChainETHToken)
         );
+        deposit.moveToVault(
+            beaconChainETHToken,
+            address(vault7535ETH),
+            (initialDeposit - withdrawnAmount) + 0.1 ether,
+            alice,
+            minSharesOut
+        );
+        vm.stopPrank();
 
-        // Alice moves all her ETH to the vault
+        // Alice moves all her ETH to the vault (works with 4626 because that's the initial deposit)
         _moveToVault(alice, beaconChainETHToken, address(vault7535ETH), initialDeposit - withdrawnAmount);
 
         // Verify balances
@@ -284,9 +347,6 @@ contract ByzantineDepositTest is Test {
 
         // Simulate stETH rebasing (for both alice and bob)
         _rebaseStETH(2 * rebasingAmount);
-
-        // Unpause withdrawals
-        _unpauseWithdrawals();
 
         // Alice withdraws all her stETH
         _withdraw(alice, stETH, wstETHAmountAlice);
@@ -344,9 +404,6 @@ contract ByzantineDepositTest is Test {
         assertEq(deposit.depositedAmount(alice, fUSDC), 2 * initialDeposit);
         assertEq(fUSDC.balanceOf(alice), initialfUSDCBalance - 2 * initialDeposit);
 
-        // Unpause withdrawals
-        _unpauseWithdrawals();
-
         // Alice withdraws some fUSDC
         _withdraw(alice, fUSDC, withdrawnAmount);
 
@@ -369,6 +426,51 @@ contract ByzantineDepositTest is Test {
         assertEq(fUSDC.balanceOf(address(vault4626fUSDC)), amountToMove); // vault assets
     }
 
+    function test_Move_MismatchedVaultReverts() public {
+        vm.prank(byzantineAdmin);
+        deposit.addDepositToken(fUSDC);
+
+        // Alice deposits various assets
+        _depositETH(alice, 5 ether);
+        _depositStETH(alice, 5 ether);
+        _depositfUSDC(alice, 5 ether);
+
+        // Unpause vault moves
+        _unpauseVaultMoves();
+
+        // Record the vaults
+        _recordVaults();
+
+        // Case 1: Should revert when trying to move ETH
+        vm.startPrank(alice);
+        vm.expectRevert(ByzantineDeposit.MismatchingAssets.selector);
+        deposit.moveToVault(beaconChainETHToken, address(vault4626fUSDC), 5 ether, alice, 5 ether);
+
+        // Case 2: Should revert when trying to move ERC20 tokens to a ERC7535 vault
+        uint256 depositAmount = deposit.depositedAmount(alice, stETH);
+        vm.expectRevert(ByzantineDeposit.MismatchingAssets.selector);
+        deposit.moveToVault(stETH, address(vault7535ETH), depositAmount, alice, depositAmount);
+
+        // Case 3: Should revert when trying to move mismatched ERC20 tokens to a ERC4626 vault
+        // testing with mainnet, revert reason from stETH.transferFrom() is ALLOWANCE_EXCEEDED
+        vm.expectRevert(ByzantineDeposit.MismatchingAssets.selector);
+        deposit.moveToVault(fUSDC, address(vault4626stETH), 5 ether, alice, 5 ether);
+    }
+
+    function test_moveToVault_RevertWhen_ZeroShares() public {
+        // Alice deposits 1 ETH
+        _depositETH(alice, 1 ether);
+
+        // Unpause vault moves and record the vaults
+        _unpauseVaultMoves();
+        _recordVaults();
+
+        // Alice moves 1 ETH to the vault
+        vm.startPrank(alice);
+        vm.expectRevert(ByzantineDeposit.InsufficientSharesReceived.selector);
+        deposit.moveToVault(beaconChainETHToken, address(vault7535ETHZero), 1 ether, alice, 1 ether);
+    }
+
     function test_Move_RevertWhenNonRecordedVault() public {
         // Alice deposits 5 ETH
         _depositStETH(alice, 5 ether);
@@ -379,10 +481,10 @@ contract ByzantineDepositTest is Test {
 
         // Should revert when trying to move to a non recorded vault
         vm.startPrank(alice);
-        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: vault is not recorded"));
-        deposit.moveToVault(stETH, address(vault4626stETH), 5 ether, alice);
-        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: vault is not recorded"));
-        deposit.moveToVault(beaconChainETHToken, address(vault7535ETH), 5 ether, alice);
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAllowedVault.selector, address(vault4626stETH)));
+        deposit.moveToVault(stETH, address(vault4626stETH), 5 ether, alice, 5 ether);
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAllowedVault.selector, address(vault7535ETH)));
+        deposit.moveToVault(beaconChainETHToken, address(vault7535ETH), 5 ether, alice, 5 ether);
         vm.stopPrank();
     }
 
@@ -413,21 +515,23 @@ contract ByzantineDepositTest is Test {
     // withdraw tokens from the contract
     function _withdraw(address withdrawer, IERC20 token, uint256 amount) internal {
         vm.prank(withdrawer);
-        deposit.withdraw(token, amount);
+        deposit.withdraw(token, amount, withdrawer);
     }
 
     // move tokens to a vault
     function _moveToVault(address staker, IERC20 token, address vault, uint256 amount) internal {
+        uint256 minSharesOut = IERC4626(vault).previewDeposit(amount);
         vm.prank(staker);
-        deposit.moveToVault(token, vault, amount, staker);
+        deposit.moveToVault(token, vault, amount, staker, minSharesOut);
     }
 
     // record created vaults
     function _recordVaults() internal {
-        address[] memory vaults = new address[](3);
+        address[] memory vaults = new address[](4);
         vaults[0] = address(vault4626stETH);
         vaults[1] = address(vault4626fUSDC);
         vaults[2] = address(vault7535ETH);
+        vaults[3] = address(vault7535ETHZero);
         vm.prank(byzantineAdmin);
         deposit.recordByzantineVaults(vaults);
     }
@@ -448,15 +552,16 @@ contract ByzantineDepositTest is Test {
         /// TODO: find a way to simulate stETH rebasing on foundry tests
     }
 
-    function _unpauseWithdrawals() internal {
-        vm.startPrank(unpauser);
-        deposit.unpause(deposit.paused() & ~(1 << PAUSED_WITHDRAWALS));
-        vm.stopPrank();
-    }
-
     function _unpauseVaultMoves() internal {
         vm.startPrank(unpauser);
         deposit.unpause(deposit.paused() & ~(1 << PAUSED_VAULTS_MOVES));
         vm.stopPrank();
+    }
+
+    function _createArrayOfOne(
+        address addr
+    ) internal pure returns (address[] memory array) {
+        array = new address[](1);
+        array[0] = addr;
     }
 }

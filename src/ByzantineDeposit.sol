@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "./permissions/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -29,7 +30,7 @@ interface IwstETH is IERC20 {
 }
 
 /**
- * @title ByzantineDeposit contract to allow early liquidity provider to deposit on the Byzantine procotol
+ * @title ByzantineDeposit contract to allow early liquidity provider to deposit on the Byzantine protocol
  * @author Byzantine Finance
  * @notice This contract allows the deposit of any token as long as it is whitelisted as a deposit token.
  *         Deposits will be allowed for whitelisted addresses only.
@@ -38,16 +39,19 @@ interface IwstETH is IERC20 {
  *      stablecoins, wrapped BTC, iBTC and any other ERC20 can be whitelisted as long as they're not rebasing
  *      /!\ stETH is the only rebasing token allowed /!\
  */
-contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
+contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     /* ============== EVENTS ============== */
 
     event Deposit(address indexed sender, IERC20 token, uint256 amount);
-    event Withdraw(address indexed sender, IERC20 token, uint256 amount);
+    event Withdraw(address indexed sender, IERC20 token, uint256 amount, address receiver);
     event MoveToVault(address indexed owner, IERC20 token, address vault, uint256 amount, address receiver);
     event DepositorStatusChanged(address indexed depositor, bool canDeposit);
     event DepositTokenAdded(IERC20 token);
+    event DepositTokenRemoved(IERC20 token);
+    event ByzantineVaultRecorded(address vault);
+    event ByzantineVaultDelisted(address vault);
     event PermissionlessDepositSet(bool permissionlessDeposit);
 
     /* ============== CONSTANTS + IMMUTABLES ============== */
@@ -55,11 +59,8 @@ contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
     /// @dev Index for flag that pauses deposits when set
     uint8 internal constant PAUSED_DEPOSITS = 0;
 
-    /// @dev Index for flag that pauses withdrawals when set.
-    uint8 internal constant PAUSED_WITHDRAWALS = 1;
-
     /// @dev Index for flag that pauses Byzantine vaults moves when set.
-    uint8 internal constant PAUSED_VAULTS_MOVES = 2;
+    uint8 internal constant PAUSED_VAULTS_MOVES = 1;
 
     /// @dev Canonical, virtual beacon chain ETH token
     IERC20 public constant beaconChainETHToken = IERC20(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
@@ -85,7 +86,7 @@ contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
     mapping(address => bool) public isByzantineVault;
 
     /// @dev If turned to true, public deposits will be allowed.
-    bool public isPermissionlessDeposit = false;
+    bool public isPermissionlessDeposit;
 
     /* ============== MODIFIERS ============== */
 
@@ -93,7 +94,7 @@ contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
         address _address
     ) {
         if (!isPermissionlessDeposit) {
-            require(canDeposit[_address], "ByzantineDeposit.onlyIfCanDeposit: address is not authorized to deposit");
+            if (!canDeposit[_address]) revert NotAuthorizedToDeposit(_address);
         }
         _;
     }
@@ -102,6 +103,7 @@ contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @notice Constructor for initializing the ByzantineDeposit contract
+     * @notice By default, the deposit of ETH, stETH and wstETH is allowed
      * @param _pauserRegistry The address of the pauser registry contract
      * @param initPausedStatus The initial paused status flags
      * @param _initialOwner The address that will be set as the owner of this contract
@@ -118,6 +120,9 @@ contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
         _initializePauser(_pauserRegistry, initPausedStatus);
         stETHToken = _stETHToken;
         wstETH = _wstETH;
+        isDepositToken[beaconChainETHToken] = true;
+        isDepositToken[stETHToken] = true;
+        isDepositToken[wstETH] = true;
     }
 
     /* ============== EXTERNAL FUNCTIONS ============== */
@@ -127,7 +132,8 @@ contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
      * @dev Only callable by authorized addresses if permissionless deposit not allowed
      */
     function depositETH() external payable onlyWhenNotPaused(PAUSED_DEPOSITS) onlyIfCanDeposit(msg.sender) {
-        require(msg.value > 0, "ByzantineDeposit.depositETH: no ETH sent");
+        if (!isDepositToken[beaconChainETHToken]) revert NotAllowedDepositToken(beaconChainETHToken);
+        if (msg.value <= 0) revert ZeroETHSent();
         depositedAmount[msg.sender][beaconChainETHToken] += msg.value;
         emit Deposit(msg.sender, beaconChainETHToken, msg.value);
     }
@@ -144,10 +150,7 @@ contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
         IERC20 _token,
         uint256 _amount
     ) external onlyWhenNotPaused(PAUSED_DEPOSITS) onlyIfCanDeposit(msg.sender) {
-        require(
-            _token == stETHToken || isDepositToken[_token],
-            "ByzantineDeposit.depositERC20: token is not allowed to be deposited"
-        );
+        if (!isDepositToken[_token]) revert NotAllowedDepositToken(_token);
         _token.safeTransferFrom(msg.sender, address(this), _amount);
         uint256 amount = _amount;
         if (_token == stETHToken) {
@@ -162,28 +165,26 @@ contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
      * @notice Withdraw deposited tokens from the contract
      * @param _token The ERC20 token address to withdraw. 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE for beacon chain ETH
      * @param _amount The amount of the token to withdraw. If stETH, `_amount` must be the amount of wstETH during the deposit(s)
+     * @param _receiver The address who will receive the withdrawn tokens
      * @dev If stETH is withdrawn, it will be wstETH will be unwrapped to stETH
      */
-    function withdraw(IERC20 _token, uint256 _amount) external onlyWhenNotPaused(PAUSED_WITHDRAWALS) nonReentrant {
-        require(
-            depositedAmount[msg.sender][_token] >= _amount,
-            "ByzantineDeposit.withdraw: not enough deposited amount for token"
-        );
+    function withdraw(IERC20 _token, uint256 _amount, address _receiver) external nonReentrant {
+        if (depositedAmount[msg.sender][_token] < _amount) revert InsufficientDepositedBalance(msg.sender, _token);
         unchecked {
             // Overflow not possible because of previous check
             depositedAmount[msg.sender][_token] -= _amount;
         }
-        uint256 amount = _amount;
+
         if (_token == beaconChainETHToken) {
-            (bool success,) = msg.sender.call{value: amount}("");
-            require(success, "ByzantineDeposit.withdraw: ETH transfer to withdrawer failed");
-            emit Withdraw(msg.sender, _token, amount);
+            (bool success,) = _receiver.call{value: _amount}("");
+            if (!success) revert ETHTransferFailed();
+            emit Withdraw(msg.sender, _token, _amount, _receiver);
             return;
         } else if (_token == stETHToken) {
-            amount = wstETH.unwrap(_amount);
+            _amount = wstETH.unwrap(_amount);
         }
-        _token.safeTransfer(msg.sender, amount);
-        emit Withdraw(msg.sender, _token, amount);
+        _token.safeTransfer(_receiver, _amount);
+        emit Withdraw(msg.sender, _token, _amount, _receiver);
     }
 
     /**
@@ -198,42 +199,55 @@ contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
         IERC20 _token,
         address _vault,
         uint256 _amount,
-        address _receiver
+        address _receiver,
+        uint256 _minSharesOut
     ) external onlyWhenNotPaused(PAUSED_VAULTS_MOVES) nonReentrant {
-        require(isByzantineVault[_vault], "ByzantineDeposit.moveToVault: vault is not recorded");
-        require(
-            depositedAmount[msg.sender][_token] >= _amount,
-            "ByzantineDeposit.moveToVault: not enough deposited amount for token"
-        );
+        require(canDeposit[msg.sender], "ByzantineDeposit.moveToVault: address is not authorized to move tokens");
+        if (!isByzantineVault[_vault]) revert NotAllowedVault(_vault);
+        if (address(_token) != IERC4626(_vault).asset()) revert MismatchingAssets();
+        if (depositedAmount[msg.sender][_token] < _amount) revert InsufficientDepositedBalance(msg.sender, _token);
         unchecked {
             // Overflow not possible because of previous check
             depositedAmount[msg.sender][_token] -= _amount;
         }
-        uint256 amount = _amount;
+
+        uint256 sharesBefore;
+        uint256 sharesAfter;
         if (_token == beaconChainETHToken) {
-            IERC7535(_vault).deposit{value: amount}(amount, _receiver);
-            emit MoveToVault(msg.sender, _token, _vault, amount, _receiver);
-            return;
-        } else if (_token == stETHToken) {
-            amount = wstETH.unwrap(_amount);
+            sharesBefore = IERC7535(_vault).balanceOf(_receiver);
+            IERC7535(_vault).deposit{value: _amount}(_amount, _receiver);
+            sharesAfter = IERC7535(_vault).balanceOf(_receiver);
+        } else {
+            if (_token == stETHToken) {
+                _amount = wstETH.unwrap(_amount);
+            }
+            _token.forceApprove(_vault, _amount);
+            sharesBefore = IERC4626(_vault).balanceOf(_receiver);
+            IERC4626(_vault).deposit(_amount, _receiver);
+            sharesAfter = IERC4626(_vault).balanceOf(_receiver);
         }
-        _token.approve(_vault, amount);
-        IERC4626(_vault).deposit(amount, _receiver);
-        emit MoveToVault(msg.sender, _token, _vault, amount, _receiver);
+
+        uint256 sharesReceived = sharesAfter - sharesBefore;
+        if (sharesReceived < _minSharesOut) revert InsufficientSharesReceived();
+        emit MoveToVault(msg.sender, _token, _vault, _amount, _receiver);
     }
 
     /* ============== ADMIN FUNCTIONS ============== */
 
     /**
-     * @notice Sets whether an address is authorized to deposit in this contract
-     * @param _address The address to set deposit permissions for
-     * @param _canDeposit Boolean indicating if the address should be allowed to deposit or not
+     * @notice Sets whether some addresses are authorized to deposit in this contract
+     * @param _addr The addresses to set deposit permissions for
+     * @param _canDeposit Boolean indicating if the addresses should be allowed to deposit or not
      * @dev Only callable by the owner
      */
-    function setCanDeposit(address _address, bool _canDeposit) external onlyOwner {
-        require(_address != address(0), "ByzantineDeposit.setCanDeposit: zero address input");
-        canDeposit[_address] = _canDeposit;
-        emit DepositorStatusChanged(_address, _canDeposit);
+    function setCanDeposit(address[] calldata _addr, bool _canDeposit) external onlyOwner {
+        for (uint256 i; i < _addr.length;) {
+            canDeposit[_addr[i]] = _canDeposit;
+            emit DepositorStatusChanged(_addr[i], _canDeposit);
+            unchecked {
+                ++i;
+            }
+        }
     }
 
     /**
@@ -245,12 +259,20 @@ contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
     function addDepositToken(
         IERC20 _token
     ) external onlyOwner {
-        require(
-            (_token != beaconChainETHToken) && (_token != stETHToken),
-            "ByzantineDeposit.addDepositToken: beaconChainETH or stETH cannot be added"
-        );
         isDepositToken[_token] = true;
         emit DepositTokenAdded(_token);
+    }
+
+    /**
+     * @notice Remove a token from the list of allowed deposit tokens
+     * @param _token The ERC20 token contract address to remove from the allowed deposit tokens
+     * @dev Only callable by the owner
+     */
+    function removeDepositToken(
+        IERC20 _token
+    ) external onlyOwner {
+        isDepositToken[_token] = false;
+        emit DepositTokenRemoved(_token);
     }
 
     /**
@@ -274,11 +296,35 @@ contract ByzantineDeposit is Ownable, Pausable, ReentrancyGuard {
     function recordByzantineVaults(
         address[] calldata _vaults
     ) external onlyOwner {
-        for (uint256 i = 0; i < _vaults.length;) {
+        for (uint256 i; i < _vaults.length;) {
             isByzantineVault[_vaults[i]] = true;
+            emit ByzantineVaultRecorded(_vaults[i]);
             unchecked {
                 ++i;
             }
         }
     }
+
+    /**
+     * @notice Delist a Byzantine vault in case the whitelisting was made in error
+     * @param _vault The address of the Byzantine vault to delist
+     * @dev Only callable by the owner
+     */
+    function delistByzantineVault(
+        address _vault
+    ) external onlyOwner {
+        isByzantineVault[_vault] = false;
+        emit ByzantineVaultDelisted(_vault);
+    }
+
+    /* ============== CUSTOM ERRORS ============== */
+
+    error NotAuthorizedToDeposit(address sender);
+    error NotAllowedDepositToken(IERC20 token);
+    error NotAllowedVault(address vault);
+    error InsufficientDepositedBalance(address sender, IERC20 token);
+    error InsufficientSharesReceived();
+    error MismatchingAssets();
+    error ZeroETHSent();
+    error ETHTransferFailed();
 }
