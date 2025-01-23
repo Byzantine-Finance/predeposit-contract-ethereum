@@ -191,7 +191,7 @@ contract ByzantineDepositTest is Test {
 
         // Alice shoudn't be able to move her stETH to the vault
         vm.prank(alice);
-        vm.expectRevert(bytes("ByzantineDeposit.moveToVault: address is not authorized to move tokens"));
+        vm.expectRevert(abi.encodeWithSelector(ByzantineDeposit.NotAuthorizedToMoveFunds.selector, alice));
         deposit.moveToVault(stETH, address(vault4626stETH), 3 ether, alice, 3 ether);
     }
 
