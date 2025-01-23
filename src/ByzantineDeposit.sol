@@ -202,7 +202,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         address _receiver,
         uint256 _minSharesOut
     ) external onlyWhenNotPaused(PAUSED_VAULTS_MOVES) nonReentrant {
-        require(canDeposit[msg.sender], "ByzantineDeposit.moveToVault: address is not authorized to move tokens");
+        if (!canDeposit[msg.sender]) revert NotAuthorizedToMoveFunds(msg.sender);
         if (!isByzantineVault[_vault]) revert NotAllowedVault(_vault);
         if (address(_token) != IERC4626(_vault).asset()) revert MismatchingAssets();
         if (depositedAmount[msg.sender][_token] < _amount) revert InsufficientDepositedBalance(msg.sender, _token);
@@ -320,6 +320,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     /* ============== CUSTOM ERRORS ============== */
 
     error NotAuthorizedToDeposit(address sender);
+    error NotAuthorizedToMoveFunds(address sender);
     error NotAllowedDepositToken(IERC20 token);
     error NotAllowedVault(address vault);
     error InsufficientDepositedBalance(address sender, IERC20 token);
