@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.28;
 
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "./permissions/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC7535} from "./interfaces/IERC7535.sol";
 import {IPauserRegistry} from "./interfaces/IPauserRegistry.sol";
@@ -154,7 +152,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         _token.safeTransferFrom(msg.sender, address(this), _amount);
         uint256 amount = _amount;
         if (_token == stETHToken) {
-            stETHToken.approve(address(wstETH), _amount);
+            stETHToken.forceApprove(address(wstETH), _amount);
             amount = wstETH.wrap(_amount);
         }
         depositedAmount[msg.sender][_token] += amount;
@@ -176,6 +174,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         }
 
         if (_token == beaconChainETHToken) {
+            if (_receiver == address(0)) revert ReceiverIsZeroAddress();
             (bool success,) = _receiver.call{value: _amount}("");
             if (!success) revert ETHTransferFailed();
             emit Withdraw(msg.sender, _token, _amount, _receiver);
@@ -206,6 +205,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         if (!isByzantineVault[_vault]) revert NotAllowedVault(_vault);
         if (address(_token) != IERC4626(_vault).asset()) revert MismatchingAssets();
         if (depositedAmount[msg.sender][_token] < _amount) revert InsufficientDepositedBalance(msg.sender, _token);
+        if (_receiver == address(0)) revert ReceiverIsZeroAddress();
         unchecked {
             // Overflow not possible because of previous check
             depositedAmount[msg.sender][_token] -= _amount;
@@ -328,4 +328,5 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     error MismatchingAssets();
     error ZeroETHSent();
     error ETHTransferFailed();
+    error ReceiverIsZeroAddress();
 }
