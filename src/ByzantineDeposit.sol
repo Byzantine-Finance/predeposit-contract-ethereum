@@ -176,6 +176,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         }
 
         if (_token == beaconChainETHToken) {
+            if (_receiver == address(0)) revert ReceiverIsZeroAddress();
             (bool success,) = _receiver.call{value: _amount}("");
             if (!success) revert ETHTransferFailed();
             emit Withdraw(msg.sender, _token, _amount, _receiver);
@@ -206,6 +207,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         if (!isByzantineVault[_vault]) revert NotAllowedVault(_vault);
         if (address(_token) != IERC4626(_vault).asset()) revert MismatchingAssets();
         if (depositedAmount[msg.sender][_token] < _amount) revert InsufficientDepositedBalance(msg.sender, _token);
+        if (_receiver == address(0)) revert ReceiverIsZeroAddress();
         unchecked {
             // Overflow not possible because of previous check
             depositedAmount[msg.sender][_token] -= _amount;
@@ -327,4 +329,5 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
     error MismatchingAssets();
     error ZeroETHSent();
     error ETHTransferFailed();
+    error ReceiverIsZeroAddress();
 }

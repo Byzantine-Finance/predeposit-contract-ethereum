@@ -471,6 +471,24 @@ contract ByzantineDepositTest is Test {
         deposit.moveToVault(beaconChainETHToken, address(vault7535ETHZero), 1 ether, alice, 1 ether);
     }
 
+    function test_ReceiverIsZeroAddress() public {
+        // Alice deposits 1 ETH
+        _depositETH(alice, 1 ether);
+        
+        vm.prank(alice);
+        vm.expectRevert(ByzantineDeposit.ReceiverIsZeroAddress.selector);
+        deposit.withdraw(beaconChainETHToken, 1 ether, address(0));
+
+        // Unpause vault moves and record the vaults
+        _unpauseVaultMoves();
+        _recordVaults();
+
+        // Alice moves 1 ETH to the vault
+        vm.startPrank(alice);
+        vm.expectRevert(ByzantineDeposit.ReceiverIsZeroAddress.selector);
+        deposit.moveToVault(beaconChainETHToken, address(vault7535ETHZero), 1 ether, address(0), 1 ether);
+    }
+
     function test_Move_RevertWhenNonRecordedVault() public {
         // Alice deposits 5 ETH
         _depositStETH(alice, 5 ether);
