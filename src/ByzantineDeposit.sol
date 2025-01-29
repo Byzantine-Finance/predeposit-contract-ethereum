@@ -154,7 +154,7 @@ contract ByzantineDeposit is Ownable2Step, Pausable, ReentrancyGuard {
         _token.safeTransferFrom(msg.sender, address(this), _amount);
         uint256 amount = _amount;
         if (_token == stETHToken) {
-            stETHToken.approve(address(wstETH), _amount);
+            stETHToken.forceApprove(address(wstETH), _amount);
             amount = wstETH.wrap(_amount);
         }
         depositedAmount[msg.sender][_token] += amount;
