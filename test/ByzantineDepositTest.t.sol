@@ -474,7 +474,7 @@ contract ByzantineDepositTest is Test {
     function test_ReceiverIsZeroAddress() public {
         // Alice deposits 1 ETH
         _depositETH(alice, 1 ether);
-        
+
         vm.prank(alice);
         vm.expectRevert(ByzantineDeposit.ReceiverIsZeroAddress.selector);
         deposit.withdraw(beaconChainETHToken, 1 ether, address(0));
