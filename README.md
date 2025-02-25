@@ -42,9 +42,23 @@ Only registers pausers and unpausers recorded in the [`PauserRegistry`](src/perm
 
 This feature enhances security by allowing the contract owner to halt operations in case of emergencies. It will also block the moves to vaults as long as Byzantine protocol is not live on mainnet.
 
-## Audit Considerations
+## Audits
 
-| Audit Aspect                                                                                            | Status                                                                                                                                                                   |
-| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Unit Tests & Fuzzing**                                                                                | Comprehensive unit tests and fuzzing tests have been conducted to ensure functionality and security. See [`ByzantineDepositTest.t.sol`](test/ByzantineDepositTest.t.sol) |
-| **[`Pausable`](src/permissions/Pausable.sol) & [`PauserRegistry`](src/permissions/PauserRegistry.sol)** | Taken from audited Eigen Layer repository - no additional audit needed                                                                                                   |
+Audited by security industry leaders:
+
+- [Spearbit](https://spearbit.com/): [audit report](audits/Byzantine%20Deposit%20-%20Spearbit%20-%20Jan%202025.pdf)
+- [Hacken](https://hacken.io/): [audit report](audits/Byzantine%20Deposit%20-%20Hacken%20-%20Jan%202025.pdf)
+
+## Current Mainnet Deployment
+
+###### Deposit Contract
+
+| Name                                           | Address                                                                                                                 |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| [`ByzantineDeposit`](src/ByzantineDeposit.sol) | [`0xbA98A4d436e79639A1598aFc988eFB7A828d7F08`](https://etherscan.io/address/0xbA98A4d436e79639A1598aFc988eFB7A828d7F08) |
+
+###### Multisigs
+
+| Name                                                   | Address                                                                                                                 |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| [`PauserRegistry`](src/permissions/PauserRegistry.sol) | [`0xf21189365131551Ba4c3613252B1bcCdA60BD1e6`](https://etherscan.io/address/0xf21189365131551Ba4c3613252B1bcCdA60BD1e6) |

@@ -1,0 +1,14 @@
+{
+  "addresses": {
+    "byzantineDeposit": "0xbA98A4d436e79639A1598aFc988eFB7A828d7F08",
+    "pauserRegistry": "0xf21189365131551Ba4c3613252B1bcCdA60BD1e6"
+  },
+  "chainInfo": {
+    "chainId": 1,
+    "deploymentBlock": 21923022
+  },
+  "parameters": {
+    "byzantineDeposit owner": "0x6A85d9E2fEC21f9C9452FC4022abf2a21A462851",
+    "unpauser": "0xe94Da56c5B7d77F5859Cc7492BC564e38f2EEBdF"
+  }
+}

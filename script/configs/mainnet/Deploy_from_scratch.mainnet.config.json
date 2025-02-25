@@ -1,0 +1,22 @@
+{
+  "chainInfo": {
+    "chainId": 1
+  },
+  "pauserRegistryConfig": {
+    "pausers": [
+      "0x8F065Ff1737CeF027E66094230d5376E636FC8D8",
+      "0xe1c4cc0A57E4bd25Fe418657Be56dB92251ccF53",
+      "0x3f6632F42a9a7A3a5b10146A5B3B2Bb8B11536C5",
+      "0xaDDDe88E8C1786ab04D2640FF0F155506E283584",
+      "0x3C946A6DBE43f2f89B7b4f66861d97DF0749F9f3",
+      "0xa25730F684288CC59D9d5c8356C658F0e684E56B"
+    ],
+    "unpauser": "0xe94Da56c5B7d77F5859Cc7492BC564e38f2EEBdF"
+  },
+  "byzantineDepositConfig": {
+    "owner": "0x6A85d9E2fEC21f9C9452FC4022abf2a21A462851",
+    "stETH": "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84",
+    "wstETH": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+    "initPausedStatus": 2
+  }
+}
