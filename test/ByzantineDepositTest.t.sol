@@ -77,7 +77,7 @@ contract ByzantineDepositTest is Test {
     uint256 private initialPausedStatus = 1 << PAUSED_VAULTS_MOVES;
 
     // RPC URL of the test environnement
-    string private RPC_URL = vm.envString("HOLESKY_RPC_URL");
+    string private RPC_URL = vm.envString("MAINNET_RPC_URL");
     uint256 private forkId;
 
     function setUp() public {
@@ -85,10 +85,10 @@ contract ByzantineDepositTest is Test {
         forkId = vm.createSelectFork(RPC_URL);
         scUser = new SmartContractUser();
 
-        // Contract addresses on Holesky
-        stETH = IERC20(0x3F1c547b21f65e10480dE3ad8E19fAAC46C95034);
-        wstETH = IwstETH(0x8d09a4502Cc8Cf1547aD300E066060D043f6982D);
-        fUSDC = IERC20(0x74A4A85C611679B73F402B36c0F84A7D2CcdFDa3);
+        // Contract addresses on Mainnet
+        stETH = IERC20(0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84);
+        wstETH = IwstETH(0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0);
+        fUSDC = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
 
         // Byzantine Vaults Mocks
         vault4626stETH = new ERC4626Mock(stETH, "stETH Byzantine Vault Shares", "byzStETH");
@@ -335,7 +335,7 @@ contract ByzantineDepositTest is Test {
 
         // Verify balances
         assertEq(deposit.depositedAmount(alice, stETH), wstETHAmountAlice);
-        assertApproxEqAbs(stETH.balanceOf(alice), initialStETHBalance - initialAliceDeposit, 1);
+        assertApproxEqAbs(stETH.balanceOf(alice), initialStETHBalance - initialAliceDeposit, 2);
 
         // Simulate stETH rebasing (only for alice here)
         uint256 rebasingAmount = 0 ether;
