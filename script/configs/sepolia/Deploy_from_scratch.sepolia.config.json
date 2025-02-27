@@ -1,0 +1,19 @@
+{
+  "chainInfo": {
+    "chainId": 11155111
+  },
+  "pauserRegistryConfig": {
+    "pausers": [
+      "0x7426dd8546c43f4Da37545594874575fCE166b9E",
+      "0x99b64eCdfD384E585e3c56F51135156436b5c113",
+      "0xfb91017f4982eC82474d3Fcda3B71a9B60619AF1"
+    ],
+    "unpauser": "0x7426dd8546c43f4Da37545594874575fCE166b9E"
+  },
+  "byzantineDepositConfig": {
+    "owner": "0x7426dd8546c43f4Da37545594874575fCE166b9E",
+    "stETH": "0x3e3FE7dBc6B4C189E7128855dD526361c49b40Af",
+    "wstETH": "0xB82381A3fBD3FaFA77B3a7bE693342618240067b",
+    "initPausedStatus": 2
+  }
+}
